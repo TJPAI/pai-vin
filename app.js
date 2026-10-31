@@ -125,4 +125,15 @@ async function initStorage(){
 }
 
 $('motion').onclick=startMotion;$('camera').onclick=openCamera;$('pocket').onclick=closeCamera;$('save').onclick=save;$('match').onclick=match;$('simulate').onclick=simulate;$('export').onclick=exportLog;$('reset').onclick=reset;
-if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(e=>log('sw_error',{message:e.message}));render();initStorage();
+if('serviceWorker' in navigator){
+ navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'})
+  .then(reg=>reg.update().catch(e=>log('sw_update_error',{message:e.message})))
+  .catch(e=>log('sw_error',{message:e.message}));
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{
+  if(!sessionStorage.getItem('pai-vin-sw-refresh-032')){
+   sessionStorage.setItem('pai-vin-sw-refresh-032','1');
+   window.location.reload();
+  }
+ });
+}
+render();initStorage();
