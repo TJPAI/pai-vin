@@ -26,7 +26,11 @@ function orientation(e){
  }else stableStart=0;
  if(events%80===0)message('举起监测中 · 当前角度变化 '+Math.round(delta)+'°');
 }
-button.onclick=()=>{
+button.onclick=async()=>{
+ if(!enabled && typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
+ try{let p=await DeviceOrientationEvent.requestPermission();if(p!=='granted'){message('姿态权限被拒绝，请在Safari设置中允许后重试');return}}
+ catch(e){message('姿态权限请求失败：'+e.message);return}
+ }
  enabled=!enabled;base=null;stableStart=0;events=0;
  button.textContent=enabled?'自动举起检测：已开启':'自动举起检测：关闭';
  message(enabled?'请在目前姿态停留片刻以校准，然后举起手机。需先授权摄像头。':'自动检测已关闭。');
