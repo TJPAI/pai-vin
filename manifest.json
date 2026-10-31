@@ -1,0 +1,10 @@
+{
+  "name": "PAI-VIN Demo",
+  "short_name": "PAI-VIN",
+  "description": "iPhone visual inertial feasibility demo",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0d1727",
+  "theme_color": "#0d1727",
+  "lang": "zh-CN"
+}
