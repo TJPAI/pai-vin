@@ -1,15 +1,14 @@
 'use strict';
 const $=id=>document.getElementById(id);
 let stream=null,imu=false,steps=0,x=0,y=0,yaw=0,lastMag=9.8,lastStep=0,lastTime=0,motionSamples=0,tracks=[[0,0]],logs=[],anchors=[];
-let storageReady=false,storageError=null,saveBusy=false;
+let storageReady=false,storageError=null,saveBusy=false,lastCorrection=null;
 function note(t){$('status').textContent=t;$('activity').textContent=new Date().toLocaleTimeString()+' · '+t}
 function log(type,detail={}){logs.push({time:Date.now(),type,...detail});if(logs.length>12000)logs.shift()}
 function render(){
- $('steps').textContent=steps;$('distance').textContent=(steps*.68).toFixed(1);
+ $('steps').textContent=steps;
+ $('distance').textContent=(steps*.68).toFixed(1);
  $('coordinates').textContent='相对坐标：'+x.toFixed(1)+'，'+y.toFixed(1)+' m · 航向仅粗估';
- $('position').setAttribute('cx',180+x*6);$('position').setAttribute('cy',125-y*6);
- $('trail').setAttribute('points',tracks.map(([a,b])=>(180+a*6)+','+(125-b*6)).join(' '));
- $('anchorDots').replaceChildren(...anchors.map(a=>{let n=document.createElementNS('http://www.w3.org/2000/svg','circle');n.setAttribute('cx',180+a.x*6);n.setAttribute('cy',125-a.y*6);n.setAttribute('r','4');n.setAttribute('fill','#ffda72');return n}))
+ VINMap.render({x,y,tracks,anchors,correction:lastCorrection});
 }
 function step(source){steps++;x+=.68*Math.sin(yaw);y+=.68*Math.cos(yaw);tracks.push([x,y]);if(tracks.length>1500)tracks.shift();render();log('step',{source,x,y,steps})}
 function handleMotion(e){
@@ -90,7 +89,8 @@ function match(){
    log('relocalization_rejected',{reason});return;
   }
   const old=[x,y],jump=Math.hypot(best.a.x-x,best.a.y-y);
-  x=best.a.x;y=best.a.y;tracks.push([x,y]);render();
+  x=best.a.x;y=best.a.y;tracks.push([x,y]);lastCorrection={old,at:[x,y],jump,anchorId:best.a.id,when:Date.now()};render();
+  $('correctionSummary').textContent='最近纠偏：'+(best.a.label||'锚点')+' · 相对坐标跳变 '+jump.toFixed(1)+' m（非真实定位误差）';
   $('matchState').textContent='锚点匹配成功（示意纠偏）';
   $('scanStatus').textContent='匹配「'+(best.a.label||best.a.id)+'」：'+best.m.inliers+
    ' 点，耗时 '+elapsed+' ms；相对轨迹示意修正 '+jump.toFixed(1)+' m。非三维绝对定位。';
@@ -98,13 +98,13 @@ function match(){
  }catch(e){$('scanStatus').textContent=e.message;$('matchState').textContent='匹配失败'}
 }
 function simulate(){yaw=Math.PI/2;for(let i=0;i<8;i++)step('SIMULATED');yaw=0;for(let i=0;i<5;i++)step('SIMULATED');$('mode').textContent='模拟轨迹';note('当前轨迹明确为模拟数据，非IMU测量。');log('simulation')}
-function exportLog(){let data={version:'0.3.1',steps,relativePosition:[x,y],tracks,logs,anchors:anchors.map(({points,...a})=>({...a,featureCount:points?.length||0}))};let url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='pai-vin-measurements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
+function exportLog(){let data={version:'0.4',steps,relativePosition:[x,y],tracks,logs,lastCorrection,anchors:anchors.map(({points,...a})=>({...a,featureCount:points?.length||0}))};let url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='pai-vin-measurements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
 async function reset(){
  if(!confirm('清除本机轨迹和视觉锚点？此操作不可撤销。'))return;
  try{
   await VINStore.clear();
   try{localStorage.removeItem('pai-vin-anchors')}catch{}
-  anchors=[];x=y=yaw=steps=0;tracks=[[0,0]];logs=[];
+  anchors=[];x=y=yaw=steps=0;tracks=[[0,0]];logs=[];lastCorrection=null;$('correctionSummary').textContent='尚无视觉纠偏记录';
   $('matchCandidates').textContent='';$('matchTime').textContent='—';$('matchState').textContent='未匹配';
   render();note('数据库与实验轨迹已清空');
  }catch(e){note('清除未完成：'+e.message)}
@@ -130,7 +130,7 @@ if('serviceWorker' in navigator){
   .then(reg=>reg.update().catch(e=>log('sw_update_error',{message:e.message})))
   .catch(e=>log('sw_error',{message:e.message}));
  navigator.serviceWorker.addEventListener('controllerchange',()=>{
-  if(!sessionStorage.getItem('pai-vin-sw-refresh-032')){
+  if(!sessionStorage.getItem('pai-vin-sw-refresh-040')){
    sessionStorage.setItem('pai-vin-sw-refresh-032','1');
    window.location.reload();
   }
