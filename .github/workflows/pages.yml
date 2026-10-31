@@ -23,6 +23,9 @@ jobs:
         run: |
           node --check app.js
           node --check storage.js
+          node --check map-view.js
+          grep -q 'map-view.js' index.html
+          grep -q 'map-view.js' sw.js
           grep -q 'storage.js' index.html
           grep -q 'storage.js' sw.js
           node --check vision.js
