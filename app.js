@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 let stream=null,imu=false,steps=0,x=0,y=0,yaw=0,lastMag=9.8,lastStep=0,lastTime=0,motionSamples=0,tracks=[[0,0]],logs=[],anchors=[];
-try{anchors=JSON.parse(localStorage.getItem('pai-vin-anchors')||'[]')}catch{}
+let storageReady=false,storageError=null,saveBusy=false;
 function note(t){$('status').textContent=t;$('activity').textContent=new Date().toLocaleTimeString()+' · '+t}
 function log(type,detail={}){logs.push({time:Date.now(),type,...detail});if(logs.length>12000)logs.shift()}
 function render(){
@@ -51,16 +51,19 @@ function descriptor(){
  ctx.drawImage($('video'),0,0,320,240);
  return VINVision.extract(ctx.getImageData(0,0,320,240).data);
 }
-function save(){
+async function save(){
+ if(saveBusy)return;
+ saveBusy=true;
  try{
+  if(!storageReady)throw Error('锚点数据库尚未就绪：'+(storageError||'请稍后重试'));
   const points=descriptor();
   if(points.length<12)throw Error('当前画面特征过少，请面对门牌或纹理丰富的墙面');
   const label=($('anchorName').value||'').trim()||('位置 '+(anchors.length+1));
   const a={id:Date.now(),label,x,y,points};
-  anchors.push(a);localStorage.setItem('pai-vin-anchors',JSON.stringify(anchors));
+  await VINStore.put(a);anchors.push(a);
   render();$('scanStatus').textContent='已保存「'+label+'」：'+points.length+' 个局部特征点（坐标仍为未经校准PDR估计）';$('anchorName').value='';
   log('anchor_saved',{id:a.id,features:points.length,x,y});
- }catch(e){$('scanStatus').textContent=e.message}
+ }catch(e){$('scanStatus').textContent='保存失败，未计入锚点：'+e.message;log('anchor_save_failed',{error:e.message})}finally{saveBusy=false}
 }
 function match(){
  try{
@@ -95,7 +98,31 @@ function match(){
  }catch(e){$('scanStatus').textContent=e.message;$('matchState').textContent='匹配失败'}
 }
 function simulate(){yaw=Math.PI/2;for(let i=0;i<8;i++)step('SIMULATED');yaw=0;for(let i=0;i<5;i++)step('SIMULATED');$('mode').textContent='模拟轨迹';note('当前轨迹明确为模拟数据，非IMU测量。');log('simulation')}
-function exportLog(){let data={version:'0.3',steps,relativePosition:[x,y],tracks,logs,anchors:anchors.map(({points,...a})=>({...a,featureCount:points?.length||0}))};let url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='pai-vin-measurements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
-function reset(){if(!confirm('清除本机轨迹和图像锚点？'))return;localStorage.removeItem('pai-vin-anchors');anchors=[];x=y=yaw=steps=0;tracks=[[0,0]];logs=[];$('matchCandidates').textContent='';$('matchTime').textContent='—';$('matchState').textContent='未匹配';render();note('已重置实验数据')}
+function exportLog(){let data={version:'0.3.1',steps,relativePosition:[x,y],tracks,logs,anchors:anchors.map(({points,...a})=>({...a,featureCount:points?.length||0}))};let url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='pai-vin-measurements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
+async function reset(){
+ if(!confirm('清除本机轨迹和视觉锚点？此操作不可撤销。'))return;
+ try{
+  await VINStore.clear();
+  try{localStorage.removeItem('pai-vin-anchors')}catch{}
+  anchors=[];x=y=yaw=steps=0;tracks=[[0,0]];logs=[];
+  $('matchCandidates').textContent='';$('matchTime').textContent='—';$('matchState').textContent='未匹配';
+  render();note('数据库与实验轨迹已清空');
+ }catch(e){note('清除未完成：'+e.message)}
+}
+async function initStorage(){
+ try{
+  const result=await VINStore.load();anchors=result.anchors;storageReady=true;storageError=null;render();
+  $('storageStatus').textContent='IndexedDB 可用 · '+anchors.length+' 个锚点'+
+    (result.migrated?' · 已迁移旧数据 '+result.migrated+' 个':'')+
+    (result.warning?' · 迁移警告：'+result.warning:'');
+  log('storage_ready',{anchors:anchors.length,migrated:result.migrated});
+ }catch(e){
+  storageReady=false;storageError=e.message;
+  anchors=VINStore.legacy();render();
+  $('storageStatus').textContent='存储异常：'+e.message+'。旧锚点仅供当前会话查询，禁止假保存。';
+  log('storage_error',{message:e.message});
+ }
+}
+
 $('motion').onclick=startMotion;$('camera').onclick=openCamera;$('pocket').onclick=closeCamera;$('save').onclick=save;$('match').onclick=match;$('simulate').onclick=simulate;$('export').onclick=exportLog;$('reset').onclick=reset;
-if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(e=>log('sw_error',{message:e.message}));render();
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(e=>log('sw_error',{message:e.message}));render();initStorage();
