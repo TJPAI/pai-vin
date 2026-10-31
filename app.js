@@ -55,30 +55,47 @@ function save(){
  try{
   const points=descriptor();
   if(points.length<12)throw Error('当前画面特征过少，请面对门牌或纹理丰富的墙面');
-  const a={id:Date.now(),x,y,points};
+  const label=($('anchorName').value||'').trim()||('位置 '+(anchors.length+1));
+  const a={id:Date.now(),label,x,y,points};
   anchors.push(a);localStorage.setItem('pai-vin-anchors',JSON.stringify(anchors));
-  render();$('scanStatus').textContent='已保存局部特征锚点 '+anchors.length+'：'+points.length+' 个特征点（非3D地图）';
+  render();$('scanStatus').textContent='已保存「'+label+'」：'+points.length+' 个局部特征点（坐标仍为未经校准PDR估计）';$('anchorName').value='';
   log('anchor_saved',{id:a.id,features:points.length,x,y});
  }catch(e){$('scanStatus').textContent=e.message}
 }
 function match(){
  try{
-  const points=descriptor();
-  if(!anchors.length)throw Error('请先保存至少一个锚点');
-  const results=anchors.filter(a=>Array.isArray(a.points)).map(a=>({a,m:VINVision.match(points,a.points)}))
-    .sort((u,v)=>v.m.inliers-u.m.inliers);
-  if(!results.length)throw Error('旧版锚点需要重新保存，以使用新版特征匹配');
-  const best=results[0];$('quality').textContent=best.m.inliers+' 点';
-  const summary=best.m.inliers+'/'+best.m.raw+' 个匹配；覆盖率 '+Math.round(best.m.spread*100||0)+'%';
-  log('vision_matching',{id:best.a.id,...best.m,features:points.length});
-  if(!best.m.accepted){$('scanStatus').textContent='拒绝位置修正：'+best.m.reason+'（'+summary+'）。请转动手机补扫。';return}
-  const old=[x,y];x=best.a.x;y=best.a.y;tracks.push([x,y]);render();
-  $('scanStatus').textContent='二维局部特征几何验证通过：'+summary+'。已示意回到锚点位置，非三维绝对定位。';
-  log('illustrative_relocation',{old,new:[x,y],matches:best.m.inliers});
- }catch(e){$('scanStatus').textContent=e.message}
+  const start=performance.now(),points=descriptor();
+  if(!anchors.length)throw Error('请先在不同位置保存图像锚点');
+  const ranked=anchors.filter(a=>Array.isArray(a.points))
+    .map(a=>({a,m:VINVision.match(points,a.points)}))
+    .sort((u,v)=>Number(v.m.accepted)-Number(u.m.accepted)||v.m.inliers-u.m.inliers||v.m.ratio-u.m.ratio);
+  if(!ranked.length)throw Error('旧版锚点不兼容，请重新保存');
+  const best=ranked[0],second=ranked[1],elapsed=Math.round(performance.now()-start);
+  const ambiguous=!!(second&&second.m.accepted&&
+    second.m.inliers>=best.m.inliers*.85 &&
+    Math.hypot(second.a.x-best.a.x,second.a.y-best.a.y)>2);
+  $('quality').textContent=best.m.inliers+' 点';
+  $('matchTime').textContent=elapsed+' ms';
+  const rows=ranked.slice(0,4).map((r,i)=>(i+1)+'. '+(r.a.label||('锚点 '+r.a.id))+
+    '：'+r.m.inliers+' 匹配 / '+(r.m.accepted?'几何通过':'拒绝')).join('；');
+  $('matchCandidates').textContent=rows;
+  log('vision_matching',{id:best.a.id,elapsed,ambiguous,secondId:second?.a.id||null,...best.m,features:points.length});
+  if(!best.m.accepted||ambiguous){
+   const reason=ambiguous?'多个不同位置的候选相近，拒绝自动纠偏':best.m.reason;
+   $('scanStatus').textContent='匹配未通过：'+reason+'，请转动手机补扫。';
+   $('matchState').textContent='不可靠（未纠偏）';
+   log('relocalization_rejected',{reason});return;
+  }
+  const old=[x,y],jump=Math.hypot(best.a.x-x,best.a.y-y);
+  x=best.a.x;y=best.a.y;tracks.push([x,y]);render();
+  $('matchState').textContent='锚点匹配成功（示意纠偏）';
+  $('scanStatus').textContent='匹配「'+(best.a.label||best.a.id)+'」：'+best.m.inliers+
+   ' 点，耗时 '+elapsed+' ms；相对轨迹示意修正 '+jump.toFixed(1)+' m。非三维绝对定位。';
+  log('illustrative_relocation',{old,new:[x,y],jump,elapsed,inliers:best.m.inliers,anchorId:best.a.id});
+ }catch(e){$('scanStatus').textContent=e.message;$('matchState').textContent='匹配失败'}
 }
 function simulate(){yaw=Math.PI/2;for(let i=0;i<8;i++)step('SIMULATED');yaw=0;for(let i=0;i<5;i++)step('SIMULATED');$('mode').textContent='模拟轨迹';note('当前轨迹明确为模拟数据，非IMU测量。');log('simulation')}
-function exportLog(){let data={version:'0.2',steps,relativePosition:[x,y],tracks,logs,anchors:anchors.map(({points,...a})=>({...a,featureCount:points?.length||0}))};let url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='pai-vin-measurements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
-function reset(){if(!confirm('清除本机轨迹和图像锚点？'))return;localStorage.removeItem('pai-vin-anchors');anchors=[];x=y=yaw=steps=0;tracks=[[0,0]];logs=[];render();note('已重置实验数据')}
+function exportLog(){let data={version:'0.3',steps,relativePosition:[x,y],tracks,logs,anchors:anchors.map(({points,...a})=>({...a,featureCount:points?.length||0}))};let url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='pai-vin-measurements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
+function reset(){if(!confirm('清除本机轨迹和图像锚点？'))return;localStorage.removeItem('pai-vin-anchors');anchors=[];x=y=yaw=steps=0;tracks=[[0,0]];logs=[];$('matchCandidates').textContent='';$('matchTime').textContent='—';$('matchState').textContent='未匹配';render();note('已重置实验数据')}
 $('motion').onclick=startMotion;$('camera').onclick=openCamera;$('pocket').onclick=closeCamera;$('save').onclick=save;$('match').onclick=match;$('simulate').onclick=simulate;$('export').onclick=exportLog;$('reset').onclick=reset;
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(e=>log('sw_error',{message:e.message}));render();
