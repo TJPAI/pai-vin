@@ -63,7 +63,7 @@ def run():
     if not recon:
         raise RuntimeError('COLMAP produced no sparse model. Inspect '+str(log))
     base=recon[0]
-    execute(['colmap','model_converter','--input_path',base,'--output_path',out/'mapping_cloud.ply',
+    (out/'mapping_model.txt').mkdir()\n    execute(['colmap','model_converter','--input_path',base,'--output_path',out/'mapping_cloud.ply',
              '--output_type','PLY'],log)
     execute(['colmap','model_converter','--input_path',base,'--output_path',out/'mapping_model.txt',
              '--output_type','TXT'],log)
@@ -74,7 +74,7 @@ def run():
     registered=out/'registered';registered.mkdir()
     execute(['colmap','image_registrator','--database_path',db,'--input_path',base,
              '--output_path',registered],log)
-    execute(['colmap','model_converter','--input_path',registered,'--output_path',out/'registered_model.txt',
+    (out/'registered_model.txt').mkdir()\n    execute(['colmap','model_converter','--input_path',registered,'--output_path',out/'registered_model.txt',
              '--output_type','TXT'],log)
     def image_count(path):
         p=path/'images.txt'
