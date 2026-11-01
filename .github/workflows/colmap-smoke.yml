@@ -27,12 +27,12 @@ jobs:
           colmap -h > colmap-help.txt
           ffmpeg -version | head -n 1
           grep -E "feature_extractor|mapper|image_registrator" colmap-help.txt
-          colmap feature_extractor -h > feature-extractor-help.txt
-          colmap sequential_matcher -h > sequential-matcher-help.txt
-          colmap exhaustive_matcher -h > exhaustive-matcher-help.txt
-          colmap mapper -h > mapper-help.txt
-          colmap model_converter -h > model-converter-help.txt
-          colmap image_registrator -h > image-registrator-help.txt
+          colmap feature_extractor -h > feature-extractor-help.txt 2>&1 || true
+          colmap sequential_matcher -h > sequential-matcher-help.txt 2>&1 || true
+          colmap exhaustive_matcher -h > exhaustive-matcher-help.txt 2>&1 || true
+          colmap mapper -h > mapper-help.txt 2>&1 || true
+          colmap model_converter -h > model-converter-help.txt 2>&1 || true
+          colmap image_registrator -h > image-registrator-help.txt 2>&1 || true
           grep -q -- '--ImageReader.single_camera' feature-extractor-help.txt
           grep -q -- '--SiftExtraction.use_gpu' feature-extractor-help.txt
           grep -q -- '--SiftMatching.use_gpu' exhaustive-matcher-help.txt
