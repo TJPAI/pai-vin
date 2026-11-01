@@ -1,24 +1,43 @@
 'use strict';
 const $=id=>document.getElementById(id);
 let stream=null,imu=false,steps=0,x=0,y=0,yaw=0,lastMag=9.8,lastStep=0,lastTime=0,motionSamples=0,tracks=[[0,0]],logs=[],anchors=[];
-let storageReady=false,storageError=null,saveBusy=false,lastCorrection=null,headingSource='相对陀螺仪',headingOffset=null,stepLength=0.68,calibrationStart=null;
+let storageReady=false,storageError=null,saveBusy=false,lastCorrection=null,headingSource='相对陀螺仪',headingOffset=null,stepLength=0.68,calibrationStart=null,totalDistance=0,pocketHeading=null,headingLastReport='';
 function note(t){$('status').textContent=t;$('activity').textContent=new Date().toLocaleTimeString()+' · '+t}
 function log(type,detail={}){logs.push({time:Date.now(),type,...detail});if(logs.length>12000)logs.shift()}
 function render(){
  $('steps').textContent=steps;
- $('distance').textContent=(steps*stepLength).toFixed(1);
+ $('distance').textContent=totalDistance.toFixed(1);
  $('coordinates').textContent='相对坐标：'+x.toFixed(1)+'，'+y.toFixed(1)+' m · 航向仅粗估';
  VINMap.render({x,y,tracks,anchors,correction:lastCorrection});
  $('headingStatus').textContent='设备朝向来源：'+headingSource+'；手机朝向不一定等于行走方向';
 }
-function step(source){steps++;const h=VINHeading.read();if(h.valid){if(headingOffset===null)headingOffset=h.heading*Math.PI/180-yaw;yaw=h.heading*Math.PI/180-headingOffset;headingSource=h.source+'（相对起始方向）'}else headingSource='陀螺仪积分（易漂移）';x+=stepLength*Math.sin(yaw);y+=stepLength*Math.cos(yaw);tracks.push([x,y]);if(tracks.length>1500)tracks.shift();render();log('step',{source,x,y,steps})}
+function step(source){
+ steps++;
+ if(source!=='SIMULATED'){
+  const h=VINHeading.read();
+  if(pocketHeading!==null){
+   yaw=pocketHeading;
+   headingSource='口袋保持入袋前行走方向（转弯暂不可观测）';
+  }else if(h.valid){
+   // Do not integrate gyro AND use compass on the same step.
+   const radians=h.heading*Math.PI/180;
+   if(headingOffset===null)headingOffset=radians-yaw;
+   yaw=radians-headingOffset;
+   headingSource=h.source+'（手持相对设备方向，非人体航向）';
+  }else headingSource='陀螺仪积分（方向易漂移）';
+ }
+ x+=stepLength*Math.sin(yaw);y+=stepLength*Math.cos(yaw);
+ totalDistance+=stepLength;
+ tracks.push([x,y]);if(tracks.length>1500)tracks.shift();
+ render();log('step',{source,x,y,steps,stepLength,totalDistance,pocket:pocketHeading!==null});
+}
 function handleMotion(e){
  if(!imu)return;
  const a=e.accelerationIncludingGravity;if(!a||a.x==null)return;
  const m=Math.hypot(a.x||0,a.y||0,a.z||0),t=performance.now();
  if(m>11.4&&lastMag<=11.4&&t-lastStep>380){lastStep=t;step('imu')}
  lastMag=m;
- const r=e.rotationRate;if(r&&Number.isFinite(r.alpha)){let dt=lastTime?Math.min(.08,(t-lastTime)/1000):.02;yaw+=r.alpha*Math.PI/180*dt}
+ const r=e.rotationRate;if(r&&Number.isFinite(r.alpha)){let dt=lastTime?Math.min(.08,(t-lastTime)/1000):.02;if(pocketHeading===null&&!VINHeading.read().valid)yaw+=r.alpha*Math.PI/180*dt}
  lastTime=t;
  if(++motionSamples%50===0){log('imu_sample',{mag:+m.toFixed(2),interval:e.interval||null});$('sensor').textContent='IMU 采样 '+motionSamples+' 次 · '+Math.round(1000/(e.interval||20))+' Hz（设备报告）'}
 }
@@ -38,12 +57,14 @@ async function openCamera(){
   if(!navigator.mediaDevices?.getUserMedia)throw Error('需要 HTTPS 和摄像头权限');
   if(stream)return;
   stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480}},audio:false});
+  pocketHeading=null;headingOffset=null;
   $('video').srcObject=stream;$('cameraBox').style.display='block';$('mode').textContent='视觉采集';note('摄像头已打开，可保存锚点或匹配。');log('camera_on')
  }catch(e){note('摄像头失败：'+e.message);log('camera_error',{message:e.message})}
 }
 function closeCamera(){
+ pocketHeading=yaw;
  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
- $('video').srcObject=null;$('cameraBox').style.display='none';$('mode').textContent='口袋模式';note('摄像头已关闭；请保持 Safari 前台与屏幕常亮。');log('camera_off')
+ $('video').srcObject=null;$('cameraBox').style.display='none';$('mode').textContent='口袋模式';note('已进入口袋：暂时保持进入前的方向，不将手机转动当作行走转弯；真实转弯仍无法可靠判断。请保持 Safari 前台与屏幕常亮。');log('camera_off')
 }
 function descriptor(){
  if(!stream||$('video').readyState<2)throw Error('摄像头画面尚未就绪');
@@ -123,14 +144,14 @@ function finishCalibration(){
  render();log('calibration_completed',{count,distance,previous,stepLength});
 }
 try{const stored=Number(localStorage.getItem('pai-vin-step-length'));if(stored>=.3&&stored<=1.3)stepLength=stored}catch{}
-function simulate(){yaw=Math.PI/2;for(let i=0;i<8;i++)step('SIMULATED');yaw=0;for(let i=0;i<5;i++)step('SIMULATED');$('mode').textContent='模拟轨迹';note('当前轨迹明确为模拟数据，非IMU测量。');log('simulation')}
-function exportLog(){let data={version:'0.4.2',stepLength,steps,relativePosition:[x,y],tracks,logs,lastCorrection,anchors:anchors.map(({points,...a})=>({...a,featureCount:points?.length||0}))};let url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='pai-vin-measurements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
+function simulate(){pocketHeading=null;yaw=Math.PI/2;for(let i=0;i<8;i++)step('SIMULATED');yaw=0;for(let i=0;i<5;i++)step('SIMULATED');$('mode').textContent='模拟轨迹';note('当前轨迹明确为模拟数据，非IMU测量。');log('simulation')}
+function exportLog(){let data={version:'0.4.3',stepLength,steps,totalDistance,relativePosition:[x,y],tracks,logs,lastCorrection,anchors:anchors.map(({points,...a})=>({...a,featureCount:points?.length||0}))};let url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='pai-vin-measurements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
 async function reset(){
  if(!confirm('清除本机轨迹和视觉锚点？此操作不可撤销。'))return;
  try{
   await VINStore.clear();
   try{localStorage.removeItem('pai-vin-anchors')}catch{}
-  anchors=[];x=y=yaw=steps=0;headingOffset=null;calibrationStart=null;tracks=[[0,0]];logs=[];lastCorrection=null;$('correctionSummary').textContent='尚无视觉纠偏记录';
+  anchors=[];x=y=yaw=steps=totalDistance=0;headingOffset=null;pocketHeading=null;calibrationStart=null;tracks=[[0,0]];logs=[];lastCorrection=null;$('correctionSummary').textContent='尚无视觉纠偏记录';
   $('matchCandidates').textContent='';$('matchTime').textContent='—';$('matchState').textContent='未匹配';
   render();note('数据库与实验轨迹已清空');
  }catch(e){note('清除未完成：'+e.message)}
@@ -156,8 +177,8 @@ if('serviceWorker' in navigator){
   .then(reg=>reg.update().catch(e=>log('sw_update_error',{message:e.message})))
   .catch(e=>log('sw_error',{message:e.message}));
  navigator.serviceWorker.addEventListener('controllerchange',()=>{
-  if(!sessionStorage.getItem('pai-vin-sw-refresh-042')){
-   sessionStorage.setItem('pai-vin-sw-refresh-041','1');
+  if(!sessionStorage.getItem('pai-vin-sw-refresh-043')){
+   sessionStorage.setItem('pai-vin-sw-refresh-043','1');
    window.location.reload();
   }
  });
