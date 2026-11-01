@@ -1,7 +1,7 @@
 /* PAI-VIN V0.3.2: network-first for HTML and application code; offline fallback.
    Avoid cache-first updates trapping Safari on an old release. */
-const CACHE='pai-vin-v040-20261101';
-const CORE=['./','./index.html','./app.js','./storage.js','./map-view.js','./vision.js','./auto-lift.js','./manifest.json'];
+const CACHE='pai-vin-v041-20261101';
+const CORE=['./','./index.html','./app.js','./storage.js','./map-view.js','./heading.js','./vision.js','./auto-lift.js','./manifest.json'];
 self.addEventListener('install',event=>{
   event.waitUntil((async()=>{
     const cache=await caches.open(CACHE);
