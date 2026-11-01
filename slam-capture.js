@@ -41,6 +41,7 @@ async function start(){
  const mime=chooseMime();
  if(!mime){status('浏览器没有可用的视频编码器，请使用系统相机录视频。');return}
  try{
+  if(typeof closeCamera==='function')closeCamera();
   stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}}});
   chunks=[];bytes=0;stopReason='';started=Date.now();
   recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:2500000});
