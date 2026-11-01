@@ -1,17 +1,17 @@
 'use strict';
 const $=id=>document.getElementById(id);
 let stream=null,imu=false,steps=0,x=0,y=0,yaw=0,lastMag=9.8,lastStep=0,lastTime=0,motionSamples=0,tracks=[[0,0]],logs=[],anchors=[];
-let storageReady=false,storageError=null,saveBusy=false,lastCorrection=null,headingSource='相对陀螺仪',headingOffset=null;
+let storageReady=false,storageError=null,saveBusy=false,lastCorrection=null,headingSource='相对陀螺仪',headingOffset=null,stepLength=0.68,calibrationStart=null;
 function note(t){$('status').textContent=t;$('activity').textContent=new Date().toLocaleTimeString()+' · '+t}
 function log(type,detail={}){logs.push({time:Date.now(),type,...detail});if(logs.length>12000)logs.shift()}
 function render(){
  $('steps').textContent=steps;
- $('distance').textContent=(steps*.68).toFixed(1);
+ $('distance').textContent=(steps*stepLength).toFixed(1);
  $('coordinates').textContent='相对坐标：'+x.toFixed(1)+'，'+y.toFixed(1)+' m · 航向仅粗估';
  VINMap.render({x,y,tracks,anchors,correction:lastCorrection});
  $('headingStatus').textContent='设备朝向来源：'+headingSource+'；手机朝向不一定等于行走方向';
 }
-function step(source){steps++;const h=VINHeading.read();if(h.valid){if(headingOffset===null)headingOffset=h.heading*Math.PI/180-yaw;yaw=h.heading*Math.PI/180-headingOffset;headingSource=h.source+'（相对起始方向）'}else headingSource='陀螺仪积分（易漂移）';x+=.68*Math.sin(yaw);y+=.68*Math.cos(yaw);tracks.push([x,y]);if(tracks.length>1500)tracks.shift();render();log('step',{source,x,y,steps})}
+function step(source){steps++;const h=VINHeading.read();if(h.valid){if(headingOffset===null)headingOffset=h.heading*Math.PI/180-yaw;yaw=h.heading*Math.PI/180-headingOffset;headingSource=h.source+'（相对起始方向）'}else headingSource='陀螺仪积分（易漂移）';x+=stepLength*Math.sin(yaw);y+=stepLength*Math.cos(yaw);tracks.push([x,y]);if(tracks.length>1500)tracks.shift();render();log('step',{source,x,y,steps})}
 function handleMotion(e){
  if(!imu)return;
  const a=e.accelerationIncludingGravity;if(!a||a.x==null)return;
@@ -29,7 +29,7 @@ async function startMotion(){
    const p=await DeviceMotionEvent.requestPermission();if(p!=='granted')throw Error('未授予运动传感器权限');
   }
   if(!imu)window.addEventListener('devicemotion',handleMotion);
-  imu=true;const headingPermission=await VINHeading.enable();if(!headingPermission.ok)log('heading_unavailable',{reason:headingPermission.reason});$('sensor').textContent='IMU 已启动（步长固定0.68m，未校准）';$('mode').textContent='IMU测试';
+  imu=true;const headingPermission=await VINHeading.enable();if(!headingPermission.ok)log('heading_unavailable',{reason:headingPermission.reason});$('sensor').textContent='IMU 已启动（步长 '+stepLength.toFixed(2)+'m（可校准））';$('mode').textContent='IMU测试';
   note('已请求 IMU。请走动观察步数是否更新。');log('imu_started')
  }catch(e){note('IMU 开启失败：'+e.message);log('imu_error',{message:e.message})}
 }
@@ -98,14 +98,39 @@ function match(){
   log('illustrative_relocation',{old,new:[x,y],jump,elapsed,inliers:best.m.inliers,anchorId:best.a.id});
  }catch(e){$('scanStatus').textContent=e.message;$('matchState').textContent='匹配失败'}
 }
+function beginCalibration(){
+ if(!imu){note('请先开启 IMU 再开始步长标定');return}
+ calibrationStart={steps,x,y,at:Date.now()};
+ $('calibrationStatus').textContent='已开始计步：请沿直线走已知距离，再点击完成标定。';
+ log('calibration_started',{steps});
+}
+function finishCalibration(){
+ if(!calibrationStart){$('calibrationStatus').textContent='请先点击开始标定';return}
+ const distance=Number($('knownDistance').value);
+ const count=steps-calibrationStart.steps;
+ if(!Number.isFinite(distance)||distance<2||distance>100||count<3){
+  $('calibrationStatus').textContent='请输入 2–100 米实际距离，且至少检测到 3 步；本次未修改步长。';return
+ }
+ const proposed=distance/count;
+ if(proposed<.3||proposed>1.3){
+  $('calibrationStatus').textContent='步长 '+proposed.toFixed(2)+' m 超出合理范围，请检查漏步或距离；未应用。';return
+ }
+ const previous=stepLength;
+ stepLength=proposed;
+ try{localStorage.setItem('pai-vin-step-length',String(stepLength))}catch(e){log('calibration_persist_error',{message:e.message})}
+ calibrationStart=null;
+ $('calibrationStatus').textContent='标定完成：'+count+' 步 / '+distance+' m → 步长 '+stepLength.toFixed(3)+' m；仅对后续步数生效。';
+ render();log('calibration_completed',{count,distance,previous,stepLength});
+}
+try{const stored=Number(localStorage.getItem('pai-vin-step-length'));if(stored>=.3&&stored<=1.3)stepLength=stored}catch{}
 function simulate(){yaw=Math.PI/2;for(let i=0;i<8;i++)step('SIMULATED');yaw=0;for(let i=0;i<5;i++)step('SIMULATED');$('mode').textContent='模拟轨迹';note('当前轨迹明确为模拟数据，非IMU测量。');log('simulation')}
-function exportLog(){let data={version:'0.4.1',steps,relativePosition:[x,y],tracks,logs,lastCorrection,anchors:anchors.map(({points,...a})=>({...a,featureCount:points?.length||0}))};let url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='pai-vin-measurements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
+function exportLog(){let data={version:'0.4.2',stepLength,steps,relativePosition:[x,y],tracks,logs,lastCorrection,anchors:anchors.map(({points,...a})=>({...a,featureCount:points?.length||0}))};let url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='pai-vin-measurements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
 async function reset(){
  if(!confirm('清除本机轨迹和视觉锚点？此操作不可撤销。'))return;
  try{
   await VINStore.clear();
   try{localStorage.removeItem('pai-vin-anchors')}catch{}
-  anchors=[];x=y=yaw=steps=0;headingOffset=null;tracks=[[0,0]];logs=[];lastCorrection=null;$('correctionSummary').textContent='尚无视觉纠偏记录';
+  anchors=[];x=y=yaw=steps=0;headingOffset=null;calibrationStart=null;tracks=[[0,0]];logs=[];lastCorrection=null;$('correctionSummary').textContent='尚无视觉纠偏记录';
   $('matchCandidates').textContent='';$('matchTime').textContent='—';$('matchState').textContent='未匹配';
   render();note('数据库与实验轨迹已清空');
  }catch(e){note('清除未完成：'+e.message)}
@@ -125,13 +150,13 @@ async function initStorage(){
  }
 }
 
-$('motion').onclick=startMotion;$('camera').onclick=openCamera;$('pocket').onclick=closeCamera;$('save').onclick=save;$('match').onclick=match;$('simulate').onclick=simulate;$('export').onclick=exportLog;$('reset').onclick=reset;
+$('calibrationStart').onclick=beginCalibration;$('calibrationFinish').onclick=finishCalibration;$('motion').onclick=startMotion;$('camera').onclick=openCamera;$('pocket').onclick=closeCamera;$('save').onclick=save;$('match').onclick=match;$('simulate').onclick=simulate;$('export').onclick=exportLog;$('reset').onclick=reset;
 if('serviceWorker' in navigator){
  navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'})
   .then(reg=>reg.update().catch(e=>log('sw_update_error',{message:e.message})))
   .catch(e=>log('sw_error',{message:e.message}));
  navigator.serviceWorker.addEventListener('controllerchange',()=>{
-  if(!sessionStorage.getItem('pai-vin-sw-refresh-041')){
+  if(!sessionStorage.getItem('pai-vin-sw-refresh-042')){
    sessionStorage.setItem('pai-vin-sw-refresh-041','1');
    window.location.reload();
   }
