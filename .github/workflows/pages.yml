@@ -24,6 +24,9 @@ jobs:
           node --check app.js
           node --check storage.js
           node --check map-view.js
+          node --check heading.js
+          grep -q 'heading.js' index.html
+          grep -q 'heading.js' sw.js
           grep -q 'map-view.js' index.html
           grep -q 'map-view.js' sw.js
           grep -q 'storage.js' index.html
