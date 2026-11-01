@@ -27,6 +27,26 @@ def extract(video,output,fps,log):
     if len(names)<10:raise RuntimeError('Too few frames extracted: '+str(output))
     return names
 
+def registered_names(model_txt):
+    """Read COLMAP images.txt as alternating pose and 2D-points lines.
+
+    Preserve empty second lines: dropping them can silently corrupt
+    registered-query counts and downstream evaluation.
+    """
+    p=model_txt/'images.txt'
+    if not p.exists():
+        raise RuntimeError('Expected COLMAP images.txt missing: '+str(p))
+    lines=[line for line in p.read_text().splitlines() if not line.startswith('#')]
+    if len(lines)%2:
+        raise RuntimeError('Malformed COLMAP images.txt: odd data line count')
+    names=[]
+    for i in range(0,len(lines),2):
+        fields=lines[i].split(maxsplit=9)
+        if len(fields)!=10:
+            raise RuntimeError('Malformed COLMAP image pose at line '+str(i+1))
+        names.append(fields[9])
+    return names
+
 def run():
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--mapping',type=Path,required=True)
@@ -78,25 +98,6 @@ def run():
     (out/'registered_model.txt').mkdir()
     execute(['colmap','model_converter','--input_path',registered,'--output_path',out/'registered_model.txt',
              '--output_type','TXT'],log)
-    def registered_names(model_txt):
-        """Read COLMAP images.txt as alternating pose and 2D-points lines.
-
-        Preserve empty second lines: dropping them can silently corrupt
-        registered-query counts and downstream evaluation.
-        """
-        p=model_txt/'images.txt'
-        if not p.exists():
-            raise RuntimeError('Expected COLMAP images.txt missing: '+str(p))
-        lines=[line for line in p.read_text().splitlines() if not line.startswith('#')]
-        if len(lines)%2:
-            raise RuntimeError('Malformed COLMAP images.txt: odd data line count')
-        names=[]
-        for i in range(0,len(lines),2):
-            fields=lines[i].split(maxsplit=9)
-            if len(fields)!=10:
-                raise RuntimeError('Malformed COLMAP image pose at line '+str(i+1))
-            names.append(fields[9])
-        return names
     mapping_registered=registered_names(out/'mapping_model.txt')
     query_registered=registered_names(out/'registered_model.txt')
     n=sum(name.startswith('localization/') for name in query_registered)
