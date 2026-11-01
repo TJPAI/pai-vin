@@ -10,7 +10,7 @@ button:disabled{opacity:.45}.alt{background:#38516d}.grid{display:grid;grid-temp
 input,select{width:100%;background:#102139;color:white;border:1px solid #45617d;border-radius:9px;padding:12px;font-size:15px;margin:8px 0 12px}
 .note{font-size:13px;line-height:1.65}a{color:#a9d3ff}ol{padding-left:21px}li{line-height:1.7;margin:8px 0}
 </style></head><body><main>
-<h1>PAI-VIN <small>V0.6.0</small></h1><p class="sub">纯视觉 SLAM · 建图与重定位实验</p>
+<h1>PAI-VIN <small>V0.6.1</small></h1><p class="sub">纯视觉 SLAM · 建图与重定位实验</p>
 <section class="card"><h2>第一步 · A4 米制尺度参照</h2>
 <p>按实际大小 100% 打印 A4 标定板，放在建图起点；首先从多个角度缓慢拍摄。只在初次建图时使用，不必长期安装。</p>
 <p><a href="./a4-board.html" target="_blank" rel="noopener">打开可打印的 A4 标定板</a></p>
@@ -19,11 +19,12 @@ input,select{width:100%;background:#102139;color:white;border:1px solid #45617d;
 <ol><li>第一次选择「闭环建图」，扫描标定板后沿路线走一圈回到起点。</li><li>第二次不使用标定板，选择「独立重定位」，在同一区域重新行走并录制。</li></ol>
 <label for="slamCaptureMode">本次视频用途</label>
 <select id="slamCaptureMode"><option value="mapping">第一次：闭环建图</option><option value="localization">第二次：独立重定位</option></select>
-<div class="grid"><button id="slamStart">开始录制</button><button id="slamStop" class="alt">停止并保存</button></div>
-<p id="slamCaptureStatus" class="note" role="status">网页录制单段最多两分钟，保存视频及配套 JSON；不上传服务器。</p>
+<div class="grid"><button id="slamStart">开始录制</button><button id="slamStop" class="alt">停止录制</button></div>
+<div id="slamSavePanel" class="card" hidden><h2>录像已生成 · 请单独保存 MP4</h2><p id="slamSavedFile" class="note"></p><video id="slamPreview" controls playsinline style="width:100%;max-height:320px;border-radius:9px;background:black"></video><p class="note">先播放确认，然后选择“保存视频到文件”，在 iPhone 分享菜单中选“存储到文件”。请到「文件」App 确认保存成功。</p><button id="slamSaveVideo" style="width:100%">保存视频到文件（推荐）</button><div class="grid" style="margin-top:10px"><button id="slamDownloadVideo" class="alt">直接下载 MP4</button><button id="slamSaveJson" class="alt">另存 JSON 元数据</button></div></div>
+<p id="slamCaptureStatus" class="note" role="status">网页录制单段最多两分钟。录制停止后必须点击“保存视频到文件”；JSON 是可选的单独下载。</p>
 <label for="slamSystemVideo">Safari 录制不可用时，使用 iPhone 系统相机</label>
 <input id="slamSystemVideo" type="file" accept="video/*" capture="environment">
-<p class="note">请保持 Safari 前台与屏幕常亮。导出后在 iPhone「文件」App 检查视频是否完整；优先保证连续、无模糊、真实的闭环画面。</p>
+<p class="note">请保持 Safari 前台与屏幕常亮。录制结束后先保存并在 iPhone「文件」App 检查 MP4 是否完整；优先保证连续、无模糊、真实的闭环画面。</p>
 </section>
 <section class="card"><h2>第三步 · SLAM 建图和定位（待接入）</h2>
 <p>使用 AirSLAM / SLAM-MER 处理第一次视频，获得真正的关键帧、三维点云、相机轨迹和回环优化结果；加载同一地图处理第二次视频，验证视觉重定位。</p>
