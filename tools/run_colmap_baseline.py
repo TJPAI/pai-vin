@@ -87,9 +87,7 @@ def run():
         p=model_txt/'images.txt'
         if not p.exists():
             raise RuntimeError('Expected COLMAP images.txt missing: '+str(p))
-        lines=[line.rstrip('\\r') for line in p.read_text().split('\\n')
-               if not line.startswith('#')]
-        if lines and lines[-1]=='':lines.pop()
+        lines=[line for line in p.read_text().splitlines() if not line.startswith('#')]
         if len(lines)%2:
             raise RuntimeError('Malformed COLMAP images.txt: odd data line count')
         names=[]
