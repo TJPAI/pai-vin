@@ -21,6 +21,11 @@ jobs:
         uses: actions/checkout@v4
       - name: Check browser JavaScript syntax and required files
         run: |
+          node --check slam-capture.js
+          test -s a4-board.html
+          grep -q 'slam-capture.js' index.html
+          grep -q 'slam-capture.js' sw.js
+          grep -q 'a4-board.html' index.html
           node --check app.js
           node --check storage.js
           node --check map-view.js
