@@ -47,6 +47,31 @@ def registered_names(model_txt):
         names.append(fields[9])
     return names
 
+def point_stats(model_txt):
+    """Read 3D point records from COLMAP TXT without treating comments as data."""
+    p=model_txt/'points3D.txt'
+    if not p.exists():
+        raise RuntimeError('Expected COLMAP points3D.txt missing: '+str(p))
+    counts=[]
+    errors=[]
+    for line in p.read_text().splitlines():
+        if not line.strip() or line.startswith('#'):
+            continue
+        fields=line.split()
+        if len(fields)<8:
+            raise RuntimeError('Malformed COLMAP point record')
+        errors.append(float(fields[7]))
+        if (len(fields)-8)%2:
+            raise RuntimeError('Malformed COLMAP point track')
+        counts.append((len(fields)-8)//2)
+    if not counts:
+        return {'count':0,'median_track_length':None,'mean_reprojection_error_px':None}
+    return {
+        'count':len(counts),
+        'median_track_length':sorted(counts)[len(counts)//2],
+        'mean_reprojection_error_px':round(sum(errors)/len(errors),4)
+    }
+
 def run():
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--mapping',type=Path,required=True)
@@ -107,6 +132,8 @@ def run():
              '--output_type','TXT'],log)
     mapping_registered=registered_names(out/'mapping_model.txt')
     query_registered=registered_names(out/'registered_model.txt')
+    map_points=point_stats(out/'mapping_model.txt')
+    registered_points=point_stats(out/'registered_model.txt')
     n=sum(name.startswith('localization/') for name in query_registered)
     if any(name.startswith('localization/') for name in mapping_registered):
         raise RuntimeError('Data leakage: localization images appeared in mapping model')
@@ -117,6 +144,8 @@ def run():
        'mapping_models_count':len(recon),
        'mapping_model_registered_counts':model_sizes,
        'selected_mapping_model':base.name,
+       'mapping_3d_points':map_points,
+       'registered_3d_points':registered_points,
        'query_registered_frames':n,
        'query_registration_rate':None if n is None else round(n/len(query),4),
        'metric_scale_known':False,'p95_error_m':None,
