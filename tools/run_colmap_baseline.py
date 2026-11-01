@@ -78,20 +78,35 @@ def run():
     (out/'registered_model.txt').mkdir()
     execute(['colmap','model_converter','--input_path',registered,'--output_path',out/'registered_model.txt',
              '--output_type','TXT'],log)
-    def image_count(path):
-        p=path/'images.txt'
-        if not p.exists():return None
-        lines=[l for l in p.read_text().splitlines() if l and not l.startswith('#')]
-        return len(lines)//2
-    def registered_count(path,prefix):
-        p=path/'images.txt'
-        if not p.exists():return None
-        lines=[l.strip().split() for l in p.read_text().splitlines() if l and not l.startswith('#')]
-        return sum(len(line)>=10 and line[9].startswith(prefix) for line in lines[::2])
-    n=registered_count(out/'registered_model.txt','localization/')
+    def registered_names(model_txt):
+        """Read COLMAP images.txt as alternating pose and 2D-points lines.
+
+        Preserve empty second lines: dropping them can silently corrupt
+        registered-query counts and downstream evaluation.
+        """
+        p=model_txt/'images.txt'
+        if not p.exists():
+            raise RuntimeError('Expected COLMAP images.txt missing: '+str(p))
+        lines=[line.rstrip('\\r') for line in p.read_text().split('\\n')
+               if not line.startswith('#')]
+        if lines and lines[-1]=='':lines.pop()
+        if len(lines)%2:
+            raise RuntimeError('Malformed COLMAP images.txt: odd data line count')
+        names=[]
+        for i in range(0,len(lines),2):
+            fields=lines[i].split(maxsplit=9)
+            if len(fields)!=10:
+                raise RuntimeError('Malformed COLMAP image pose at line '+str(i+1))
+            names.append(fields[9])
+        return names
+    mapping_registered=registered_names(out/'mapping_model.txt')
+    query_registered=registered_names(out/'registered_model.txt')
+    n=sum(name.startswith('localization/') for name in query_registered)
+    if any(name.startswith('localization/') for name in mapping_registered):
+        raise RuntimeError('Data leakage: localization images appeared in mapping model')
     report={'status':'offline_sfm_with_query_registration_attempted',
        'mapping_frames':len(mapping),'query_frames':len(query),
-       'mapping_registered_frames':image_count(out/'mapping_model.txt'),
+       'mapping_registered_frames':len(mapping_registered),
        'query_registered_frames':n,
        'query_registration_rate':None if n is None else round(n/len(query),4),
        'metric_scale_known':False,'p95_error_m':None,
