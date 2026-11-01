@@ -1,0 +1,33 @@
+name: COLMAP environment smoke test
+on:
+  push:
+    paths:
+      - "tools/run_colmap_baseline.py"
+      - ".github/workflows/colmap-smoke.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  colmap-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install COLMAP and FFmpeg (CPU runner)
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends colmap ffmpeg
+      - name: Verify installed commands and syntax
+        run: |
+          command -v colmap
+          command -v ffmpeg
+          command -v ffprobe
+          python3 -m py_compile tools/run_colmap_baseline.py
+          colmap -h > colmap-help.txt
+          ffmpeg -version | head -n 1
+          grep -E "feature_extractor|mapper|image_registrator" colmap-help.txt
+      - name: Save COLMAP command capabilities
+        uses: actions/upload-artifact@v4
+        with:
+          name: colmap-smoke-help
+          path: colmap-help.txt
