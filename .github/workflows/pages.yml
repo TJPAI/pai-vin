@@ -25,6 +25,9 @@ jobs:
           python3 tests/test_colmap_parser.py
           test -s docs/SLAM_DATASET.md
           node --check slam-capture.js
+          node --check web-vio-demo.js
+          test -s web-vio-demo.html
+          grep -q 'web-vio-demo.html' index.html
           node --check sw.js
           test -s a4-board.html
           test -s index.html
