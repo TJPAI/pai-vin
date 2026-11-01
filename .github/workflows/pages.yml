@@ -22,6 +22,7 @@ jobs:
       - name: Validate SLAM-only app
         run: |
           python3 -m py_compile tools/prepare_slam_dataset.py tools/run_colmap_baseline.py
+          python3 tests/test_colmap_parser.py
           test -s docs/SLAM_DATASET.md
           node --check slam-capture.js
           node --check sw.js
