@@ -1,0 +1,58 @@
+name: COLMAP full synthetic reconstruction integration
+on:
+  push:
+    paths:
+      - "tests/generate_sfm_fixture.py"
+      - "tools/run_colmap_baseline.py"
+      - ".github/workflows/colmap-integration.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reconstruct-synthetic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      QT_QPA_PLATFORM: offscreen
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install COLMAP and image generation dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends colmap ffmpeg python3-opencv python3-numpy
+      - name: Generate distinct 3D mapping and holdout localization videos
+        run: |
+          /usr/bin/python3 tests/generate_sfm_fixture.py --out /tmp/pai-vin-fixture --frames 30
+          ffprobe -v error -show_entries format=duration -of default=nw=1 /tmp/pai-vin-fixture/mapping.mp4
+      - name: Run full COLMAP pipeline on synthetic videos (no user data)
+        run: |
+          python3 tools/run_colmap_baseline.py \
+            --mapping /tmp/pai-vin-fixture/mapping.mp4 \
+            --localization /tmp/pai-vin-fixture/localization.mp4 \
+            --out /tmp/pai-vin-colmap-test --fps 5
+      - name: Assert actual nonempty reconstructed map
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('/tmp/pai-vin-colmap-test')
+          report=json.loads((root/'report.json').read_text())
+          print(json.dumps(report,indent=2))
+          assert report['mapping_registered_frames'] >= 5, 'Mapping failed to register at least five frames'
+          assert (root/'mapping_cloud.ply').stat().st_size > 500, '3D model missing'
+          assert report['query_frames'] >= 10, 'Query dataset missing'
+          PY
+      - name: Archive synthetic test report and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: colmap-synthetic-integration
+          if-no-files-found: warn
+          path: |
+            /tmp/pai-vin-colmap-test/run.log
+            /tmp/pai-vin-colmap-test/report.json
+            /tmp/pai-vin-colmap-test/mapping_cloud.ply
+            /tmp/pai-vin-colmap-test/mapping_model.txt/*.txt
+            /tmp/pai-vin-colmap-test/registered_model.txt/*.txt
