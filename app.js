@@ -145,7 +145,7 @@ function finishCalibration(){
 }
 try{const stored=Number(localStorage.getItem('pai-vin-step-length'));if(stored>=.3&&stored<=1.3)stepLength=stored}catch{}
 function simulate(){pocketHeading=null;yaw=Math.PI/2;for(let i=0;i<8;i++)step('SIMULATED');yaw=0;for(let i=0;i<5;i++)step('SIMULATED');$('mode').textContent='模拟轨迹';note('当前轨迹明确为模拟数据，非IMU测量。');log('simulation')}
-function exportLog(){let data={version:'0.4.3',stepLength,steps,totalDistance,relativePosition:[x,y],tracks,logs,lastCorrection,anchors:anchors.map(({points,...a})=>({...a,featureCount:points?.length||0}))};let url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='pai-vin-measurements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
+function exportLog(){let data={version:'0.5.0',stepLength,steps,totalDistance,relativePosition:[x,y],tracks,logs,lastCorrection,anchors:anchors.map(({points,...a})=>({...a,featureCount:points?.length||0}))};let url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='pai-vin-measurements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
 async function reset(){
  if(!confirm('清除本机轨迹和视觉锚点？此操作不可撤销。'))return;
  try{
@@ -177,8 +177,8 @@ if('serviceWorker' in navigator){
   .then(reg=>reg.update().catch(e=>log('sw_update_error',{message:e.message})))
   .catch(e=>log('sw_error',{message:e.message}));
  navigator.serviceWorker.addEventListener('controllerchange',()=>{
-  if(!sessionStorage.getItem('pai-vin-sw-refresh-043')){
-   sessionStorage.setItem('pai-vin-sw-refresh-043','1');
+  if(!sessionStorage.getItem('pai-vin-sw-refresh-050')){
+   sessionStorage.setItem('pai-vin-sw-refresh-050','1');
    window.location.reload();
   }
  });
