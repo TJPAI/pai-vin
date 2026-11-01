@@ -82,7 +82,14 @@ def run():
                  key=lambda p:int(p.name) if p.name.isdigit() else 999)
     if not recon:
         raise RuntimeError('COLMAP produced no sparse model. Inspect '+str(log))
-    base=recon[0]
+    # COLMAP may split a sequence into multiple disconnected models.
+    # Do not silently report the first model as a reconstruction of the full walk.
+    from struct import unpack
+    def registered_binary_image_count(model_dir):
+        with (model_dir/'images.bin').open('rb') as handle:
+            return unpack('<Q', handle.read(8))[0]
+    model_sizes={p.name:registered_binary_image_count(p) for p in recon}
+    base=max(recon,key=registered_binary_image_count)
     (out/'mapping_model.txt').mkdir()
     execute(['colmap','model_converter','--input_path',base,'--output_path',out/'mapping_cloud.ply',
              '--output_type','PLY'],log)
@@ -106,6 +113,10 @@ def run():
     report={'status':'offline_sfm_with_query_registration_attempted',
        'mapping_frames':len(mapping),'query_frames':len(query),
        'mapping_registered_frames':len(mapping_registered),
+       'mapping_registration_rate':round(len(mapping_registered)/len(mapping),4),
+       'mapping_models_count':len(recon),
+       'mapping_model_registered_counts':model_sizes,
+       'selected_mapping_model':base.name,
        'query_registered_frames':n,
        'query_registration_rate':None if n is None else round(n/len(query),4),
        'metric_scale_known':False,'p95_error_m':None,
