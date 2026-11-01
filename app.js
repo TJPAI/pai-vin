@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 let stream=null,imu=false,steps=0,x=0,y=0,yaw=0,lastMag=9.8,lastStep=0,lastTime=0,motionSamples=0,tracks=[[0,0]],logs=[],anchors=[];
-let storageReady=false,storageError=null,saveBusy=false,lastCorrection=null;
+let storageReady=false,storageError=null,saveBusy=false,lastCorrection=null,headingSource='相对陀螺仪',headingOffset=null;
 function note(t){$('status').textContent=t;$('activity').textContent=new Date().toLocaleTimeString()+' · '+t}
 function log(type,detail={}){logs.push({time:Date.now(),type,...detail});if(logs.length>12000)logs.shift()}
 function render(){
@@ -9,8 +9,9 @@ function render(){
  $('distance').textContent=(steps*.68).toFixed(1);
  $('coordinates').textContent='相对坐标：'+x.toFixed(1)+'，'+y.toFixed(1)+' m · 航向仅粗估';
  VINMap.render({x,y,tracks,anchors,correction:lastCorrection});
+ $('headingStatus').textContent='设备朝向来源：'+headingSource+'；手机朝向不一定等于行走方向';
 }
-function step(source){steps++;x+=.68*Math.sin(yaw);y+=.68*Math.cos(yaw);tracks.push([x,y]);if(tracks.length>1500)tracks.shift();render();log('step',{source,x,y,steps})}
+function step(source){steps++;const h=VINHeading.read();if(h.valid){if(headingOffset===null)headingOffset=h.heading*Math.PI/180-yaw;yaw=h.heading*Math.PI/180-headingOffset;headingSource=h.source+'（相对起始方向）'}else headingSource='陀螺仪积分（易漂移）';x+=.68*Math.sin(yaw);y+=.68*Math.cos(yaw);tracks.push([x,y]);if(tracks.length>1500)tracks.shift();render();log('step',{source,x,y,steps})}
 function handleMotion(e){
  if(!imu)return;
  const a=e.accelerationIncludingGravity;if(!a||a.x==null)return;
@@ -28,7 +29,7 @@ async function startMotion(){
    const p=await DeviceMotionEvent.requestPermission();if(p!=='granted')throw Error('未授予运动传感器权限');
   }
   if(!imu)window.addEventListener('devicemotion',handleMotion);
-  imu=true;$('sensor').textContent='IMU 已启动（步长固定0.68m，未校准）';$('mode').textContent='IMU测试';
+  imu=true;const headingPermission=await VINHeading.enable();if(!headingPermission.ok)log('heading_unavailable',{reason:headingPermission.reason});$('sensor').textContent='IMU 已启动（步长固定0.68m，未校准）';$('mode').textContent='IMU测试';
   note('已请求 IMU。请走动观察步数是否更新。');log('imu_started')
  }catch(e){note('IMU 开启失败：'+e.message);log('imu_error',{message:e.message})}
 }
@@ -98,13 +99,13 @@ function match(){
  }catch(e){$('scanStatus').textContent=e.message;$('matchState').textContent='匹配失败'}
 }
 function simulate(){yaw=Math.PI/2;for(let i=0;i<8;i++)step('SIMULATED');yaw=0;for(let i=0;i<5;i++)step('SIMULATED');$('mode').textContent='模拟轨迹';note('当前轨迹明确为模拟数据，非IMU测量。');log('simulation')}
-function exportLog(){let data={version:'0.4',steps,relativePosition:[x,y],tracks,logs,lastCorrection,anchors:anchors.map(({points,...a})=>({...a,featureCount:points?.length||0}))};let url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='pai-vin-measurements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
+function exportLog(){let data={version:'0.4.1',steps,relativePosition:[x,y],tracks,logs,lastCorrection,anchors:anchors.map(({points,...a})=>({...a,featureCount:points?.length||0}))};let url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='pai-vin-measurements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
 async function reset(){
  if(!confirm('清除本机轨迹和视觉锚点？此操作不可撤销。'))return;
  try{
   await VINStore.clear();
   try{localStorage.removeItem('pai-vin-anchors')}catch{}
-  anchors=[];x=y=yaw=steps=0;tracks=[[0,0]];logs=[];lastCorrection=null;$('correctionSummary').textContent='尚无视觉纠偏记录';
+  anchors=[];x=y=yaw=steps=0;headingOffset=null;tracks=[[0,0]];logs=[];lastCorrection=null;$('correctionSummary').textContent='尚无视觉纠偏记录';
   $('matchCandidates').textContent='';$('matchTime').textContent='—';$('matchState').textContent='未匹配';
   render();note('数据库与实验轨迹已清空');
  }catch(e){note('清除未完成：'+e.message)}
@@ -130,8 +131,8 @@ if('serviceWorker' in navigator){
   .then(reg=>reg.update().catch(e=>log('sw_update_error',{message:e.message})))
   .catch(e=>log('sw_error',{message:e.message}));
  navigator.serviceWorker.addEventListener('controllerchange',()=>{
-  if(!sessionStorage.getItem('pai-vin-sw-refresh-040')){
-   sessionStorage.setItem('pai-vin-sw-refresh-032','1');
+  if(!sessionStorage.getItem('pai-vin-sw-refresh-041')){
+   sessionStorage.setItem('pai-vin-sw-refresh-041','1');
    window.location.reload();
   }
  });
