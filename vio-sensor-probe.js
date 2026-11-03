@@ -11,11 +11,42 @@
  const trackContext=trackCanvas.getContext('2d',{willReadFrequently:true});
  let lastTrackingTime=-Infinity,lastTrackingReport=null;
  let visualTime=null,lastVisual=null;
- const visualHistory=[];const visualReasons={};
+ const visualHistory=[];const visualReasons={};const pendingObservations=[];
+ let syncPassed=0,syncFailed=0,pairedPassed=0;
  let visualAccepted=0,visualRejected=0;
  let stream=null,timer=null,listener=null,framesSeen=0;
  let initializer=null,attitude=null,initAttemptAt=-Infinity,initReason='等待静止初始化';
  const show=s=>{$('vioStatus').textContent=s};
+ function storeObservation(obs,t){
+  lastVisual=obs;
+  if(obs.ok)visualAccepted++;else{visualRejected++;visualReasons[obs.reason]=(visualReasons[obs.reason]||0)+1}
+  if(obs.imuWindowOk)syncPassed++;else syncFailed++;
+  if(obs.ok&&obs.imuWindowOk)pairedPassed++;
+  visualHistory.push({t,reason:obs.reason,matchCount:obs.visualMatchCount,inliers:obs.visualInliers,
+   ratio:obs.visualInlierRatio,cameraAngleDeg:obs.cameraRelativeAngleDeg,
+   imuAngleDeg:obs.imuAngularMagnitudeDeg,imuOk:obs.imuWindowOk,
+   imuReason:obs.imuWindowReason,dtMs:obs.dtMs});
+  if(visualHistory.length>200)visualHistory.shift();
+ }
+ function flushObservations(force=false){
+  // Delay visual/IMU comparison until a sensor event occurs AFTER the
+  // captured frame, so the frame time can be interpolated, not extrapolated.
+  // Scheduling delay does not imply accurate physical exposure synchronization.
+  while(pendingObservations.length){
+   const p=pendingObservations[0];
+   const last=buffer.imu.at(-1);
+   if(!force&&(!last||last.t<p.end)&&performance.now()-p.receivedAt<400)break;
+   pendingObservations.shift();
+   try{
+    const obs=PAIVioObserve.assess({tracks:p.tracks,
+     previousTime:p.start,currentTime:p.end,sensorBuffer:buffer,rotationEstimator:PAIVioRotation});
+    storeObservation(obs,p.end);
+   }catch(e){
+    storeObservation({ok:false,reason:'visual_observation_exception',visualMatchCount:0,
+     imuWindowOk:false,imuWindowReason:e.message},p.end);
+   }
+  }
+ }
  function report(){
   const r=buffer.report(),last=buffer.frames.at(-1),first=buffer.frames[0];
   const win=(last&&first&&last.t>first.t)?buffer.between(Math.max(first.t,last.t-1000),last.t):{ok:false,reason:'need_frames'};
@@ -31,6 +62,7 @@
    const recent=last?.ok?'视觉旋转 '+last.cameraRelativeAngleDeg.toFixed(2)+'°，内点 '+last.visualInliers+'/'+last.visualMatchCount:
     (last?'视觉观测暂不可用：'+(names[last.reason]||last.reason)+'，匹配 '+last.visualMatchCount:'等待连续视觉帧');
    fusionStatus.textContent='实时视觉观测：'+recent+'；本次通过 '+visualAccepted+' 次，未通过 '+visualRejected+' 次。'+
+    ' 已完成 IMU 时间配对 '+syncPassed+' 次，真正双有效 '+pairedPassed+' 次。'+
     ' IMU 数据窗口：'+(last?last.imuWindowOk?'可用':'不可用 ('+last.imuWindowReason+')':'等待')+
     '。采用未标定名义焦距，仅作诊断，不进行姿态融合或位置输出。';
   }
@@ -54,17 +86,10 @@
     const gray=VINFeatures.grayRGBA(data);
     lastTrackingReport=tracker.update(gray,t);
     if(visualTime!==null){
-     try{
-      const obs=PAIVioObserve.assess({tracks:lastTrackingReport,
-       previousTime:visualTime,currentTime:t,sensorBuffer:buffer,rotationEstimator:PAIVioRotation});
-      lastVisual=obs;
-      if(obs.ok)visualAccepted++;else{visualRejected++;visualReasons[obs.reason]=(visualReasons[obs.reason]||0)+1}
-      visualHistory.push({t,reason:obs.reason,matchCount:obs.visualMatchCount,inliers:obs.visualInliers,
-       ratio:obs.visualInlierRatio,cameraAngleDeg:obs.cameraRelativeAngleDeg,
-       imuAngleDeg:obs.imuAngularMagnitudeDeg,imuOk:obs.imuWindowOk,dtMs:obs.dtMs});
-      if(visualHistory.length>200)visualHistory.shift();
-     }catch(e){lastVisual={ok:false,reason:'visual_observation_exception',visualMatchCount:0,imuWindowOk:false,imuWindowReason:e.message};visualRejected++}
+     pendingObservations.push({start:visualTime,end:t,receivedAt:performance.now(),tracks:lastTrackingReport});
+     if(pendingObservations.length>12)flushObservations(true);
     }
+    flushObservations();
     visualTime=t;
     const output=$('vioTrackCanvas'),ctx=output.getContext('2d');
     ctx.clearRect(0,0,256,192);
@@ -80,7 +105,7 @@
   if(stream)return;
   buffer.reset();tracker.reset();framesSeen=0;lastTrackingTime=-Infinity;lastTrackingReport=null;
   initializer=null;attitude=null;initAttemptAt=-Infinity;initReason='等待静止初始化';
-  visualTime=null;lastVisual=null;visualAccepted=0;visualRejected=0;visualHistory.length=0;
+  visualTime=null;lastVisual=null;visualAccepted=0;visualRejected=0;syncPassed=0;syncFailed=0;pairedPassed=0;visualHistory.length=0;pendingObservations.length=0;
   Object.keys(visualReasons).forEach(k=>delete visualReasons[k]);
   if(window.PAIVIN?.stopBoardCamera)window.PAIVIN.stopBoardCamera();
   try{
@@ -91,6 +116,7 @@
    listener=e=>{
     const s=PAIVioSensor.fromDeviceMotion(e,performance.now());
     if(!s||!buffer.addImu(s))return;
+    // No computation here: data collection must remain lightweight.
     if(attitude){const updated=attitude.push(s);if(!updated.ok)initReason='姿态传播暂停：'+updated.reason;return}
     if(s.t-initAttemptAt<500)return;
     initAttemptAt=s.t;
@@ -108,6 +134,7 @@
   }catch(e){stop();show('启动失败：'+e.message)}
  }
  function stop(){
+  flushObservations(true);
   clearInterval(timer);timer=null;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;
   if(listener)window.removeEventListener('devicemotion',listener);listener=null;
   $('vioVideo').srcObject=null;$('vioStart').disabled=false;$('vioStop').disabled=true;
@@ -118,7 +145,9 @@
   const data={schema:'pai-vin-vio-acquisition-v1',capturedAt:new Date().toISOString(),browserClock:'performance.now',
    cameraExposureTimestampAvailable:false,deviceIMUExtrinsicsCalibrated:false,wasmVioEstimatorConnected:false,
    visualRotationModuleAvailable:true,visualAttitudeCorrectionEnabled:false,
-   visualRotationDiagnostic:{accepted:visualAccepted,rejected:visualRejected,reasons:{...visualReasons},
+   visualRotationDiagnostic:{accepted:visualAccepted,rejected:visualRejected,
+    imuWindowsPassed:syncPassed,imuWindowsFailed:syncFailed,bothPassed:pairedPassed,
+    deferredWindowMatching:true,reasons:{...visualReasons},
     intrinsics:'unverified_nominal',recent:visualHistory},
    metricPoseAvailable:false,containsPhotos:false,containsFrames:false,
    transport:r,window:win.ok?{ok:true,dt:win.dt,maxGapMs:win.maxGapMs}:win,
