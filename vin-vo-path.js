@@ -64,6 +64,7 @@
     if(saved.schema!=='pai-vin-vo-sketch-v1'||saved.metric!==false||
       !Array.isArray(saved.nodes)||saved.nodes.length<1||saved.nodes.length>200||
       !saved.nodes.every(n=>[n.x,n.y,n.heading,n.segment].every(finite)))throw Error('bad VO sketch');
+    if(saved.gateVersion!==2)throw Error('legacy untrusted VO path');
     this.nodes=saved.nodes.map(n=>({...n}));this.rejected=Number.isInteger(saved.rejected)?saved.rejected:0;
    }
   }
@@ -81,7 +82,7 @@
    return true;
   }
   serialize(){return {schema:'pai-vin-vo-sketch-v1',units:'arbitrary_step',metric:false,
-    physicalDistanceKnown:false,headingCalibrated:false,rejected:this.rejected,nodes:this.nodes};}
+    physicalDistanceKnown:false,headingCalibrated:false,gateVersion:2,rejected:this.rejected,nodes:this.nodes};}
  }
  function render(canvas,sketch){
   const c=canvas.getContext('2d'),w=canvas.width,h=canvas.height,n=sketch?.nodes||[];
