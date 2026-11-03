@@ -68,7 +68,7 @@ function estimate(matches,intr,options={}){
   const kept=pairs.filter(p=>angular(mv(R,p.a),p.b)<threshold);
   if(kept.length>best.length){best=kept;bestR=R}
  }
- if(best.length<min)return {ok:false,reason:'rotation_geometry_unreliable',inliers:best.length,total:pairs.length};
+ if(best.length<min)return {ok:false,reason:'rotation_geometry_unreliable',geometryFailureDetail:'too_few_rotation_inliers',inliers:best.length,total:pairs.length};
  let R=fitRotation(best,8)||bestR;
  const errors=best.map(p=>angular(mv(R,p.a),p.b)).sort((a,b)=>a-b);
  const inliers=pairs.filter(p=>angular(mv(R,p.a),p.b)<threshold);
@@ -76,7 +76,7 @@ function estimate(matches,intr,options={}){
  const med=errors[errors.length>>1];
  // Rotation may be predicted but never accepted as camera/body calibration.
  if(ratio<(options.minRatio??.72)||med>(options.maxMedianError??.007))
-  return {ok:false,reason:'rotation_geometry_unreliable',total:pairs.length,ratio,inliers:inliers.length,medianErrorRad:med};
+  return {ok:false,reason:'rotation_geometry_unreliable',geometryFailureDetail:ratio<(options.minRatio??.72)?'low_rotation_inlier_ratio':'high_rotation_residual',total:pairs.length,ratio,inliers:inliers.length,medianErrorRad:med};
  const theta=Math.acos(Math.max(-1,Math.min(1,(R[0][0]+R[1][1]+R[2][2]-1)/2)));
  if(theta>.55)return {ok:false,reason:'rotation_jump',total:pairs.length,inliers:inliers.length,theta};
  return {ok:true,rotationCameraCurrentFromPrevious:R,inliers:inliers.length,total:pairs.length,
