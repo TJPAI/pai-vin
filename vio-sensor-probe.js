@@ -11,6 +11,7 @@
  let lastTrackingTime=-Infinity,lastTrackingReport=null;
  let visionWorker=null,workerBusy=false,workerSession=0,workerSequence=0,workerProcessed=0,workerSkipped=0,workerErrors=0,workerCostMs=null;
  let visualTime=null,lastVisual=null;
+ const trackHistory=[];let captureCostMs=null,captureIntervalMs=null,frameTimerTicks=0,frameTooSoon=0;
  const visualHistory=[];const visualReasons={};const pendingObservations=[];
  let syncPassed=0,syncFailed=0,pairedPassed=0;
  let visualAccepted=0,visualRejected=0;
@@ -83,6 +84,12 @@
   if(m.type!=='result')return;
   workerProcessed++;workerCostMs=m.processingMs;
   lastTrackingReport=m.tracks;
+  trackHistory.push({t:m.end,frameGapMs:m.start===null?null:m.end-m.start,
+   tracks:m.tracks.total,retained:m.tracks.retained,added:m.tracks.added,
+   lost:m.tracks.lost,retention:m.tracks.retention,longLived:m.tracks.longLived,
+   visualMatches:m.tracks.matchCount,medianPatchError:m.tracks.medianError,
+   workerProcessingMs:m.processingMs});
+  if(trackHistory.length>200)trackHistory.shift();
   if(m.start!==null){
    pendingObservations.push({start:m.start,end:m.end,receivedAt:performance.now(),
     tracks:{matches:[]},vision:m.vision});
@@ -98,15 +105,18 @@
  }
  function sampleFrame(){
   const v=$('vioVideo');if(!stream||v.readyState<2)return;
-  const t=performance.now();
+  const t=performance.now();frameTimerTicks++;
   // Never queue multiple expensive image jobs: prioritize real IMU events.
   if(workerBusy){workerSkipped++;flushObservations();return}
-  if(t-lastTrackingTime<120)return;
+  if(t-lastTrackingTime<120){frameTooSoon++;return}
+  captureIntervalMs=Number.isFinite(lastTrackingTime)?t-lastTrackingTime:null;
   lastTrackingTime=t;
   try{
+   const started=performance.now();
    trackContext.drawImage(v,0,0,256,192);
    const data=trackContext.getImageData(0,0,256,192).data;
    const gray=VINFeatures.grayRGBA(data);
+   captureCostMs=performance.now()-started;
    if(!buffer.addFrame({t,width:v.videoWidth,height:v.videoHeight}))return;
    framesSeen++;
    workerBusy=true;
@@ -119,6 +129,7 @@
   if(stream)return;
   buffer.reset();framesSeen=0;lastTrackingTime=-Infinity;lastTrackingReport=null;
   workerSession++;workerSequence=0;workerBusy=false;workerProcessed=0;workerSkipped=0;workerErrors=0;workerCostMs=null;
+  trackHistory.length=0;captureCostMs=null;captureIntervalMs=null;frameTimerTicks=0;frameTooSoon=0;
   initializer=null;attitude=null;initAttemptAt=-Infinity;initReason='等待静止初始化';
   visualTime=null;lastVisual=null;visualAccepted=0;visualRejected=0;syncPassed=0;syncFailed=0;pairedPassed=0;visualHistory.length=0;pendingObservations.length=0;
   Object.keys(visualReasons).forEach(k=>delete visualReasons[k]);
@@ -172,7 +183,10 @@
     deferredWindowMatching:true,reasons:{...visualReasons},
     intrinsics:'unverified_nominal',recent:visualHistory},
    visionProcessing:{mode:'web_worker',processed:workerProcessed,skipped:workerSkipped,
-    errors:workerErrors,lastWorkerProcessingMs:workerCostMs,rawCameraExposureTimestamp:false},
+    errors:workerErrors,lastWorkerProcessingMs:workerCostMs,
+    lastMainThreadCaptureMs:captureCostMs,lastFrameIntervalMs:captureIntervalMs,
+    timerTicks:frameTimerTicks,intervalFiltered:frameTooSoon,
+    trackHistory,rawCameraExposureTimestamp:false},
    metricPoseAvailable:false,containsPhotos:false,containsFrames:false,
    transport:r,window:win.ok?{ok:true,dt:win.dt,maxGapMs:win.maxGapMs}:win,
    visualTracking:lastTrackingReport?{total:lastTrackingReport.total,retained:lastTrackingReport.retained,longLived:lastTrackingReport.longLived,avgAge:lastTrackingReport.avgAge,medianError:lastTrackingReport.medianError}:null,
