@@ -14,7 +14,7 @@ input{max-width:100%;width:100%;font-size:14px;color:#dceeff}code{font-size:12px
 .good{color:#8bf0b9}.stage{margin:11px 0;padding:11px;background:#102139;border-radius:12px}.stage b{display:block;margin-bottom:4px}
 [hidden]{display:none!important}
 </style></head><body><main>
-<h1>PAI-VIN <span class="muted small">新架构 · V2.1 Alpha</span></h1>
+<h1>PAI-VIN <span class="muted small">新架构 · V2.2 Alpha</span></h1>
 <p class="muted">首次建图一次 · 以后打开摄像头就能定位</p>
 <div class="tabs"><button id="tabSetup" aria-selected="true" type="button">① 首次建图</button><button id="tabUse" aria-selected="false" class="alt" type="button">② 日常定位</button></div>
 <section id="setup">
@@ -28,7 +28,15 @@ input{max-width:100%;width:100%;font-size:14px;color:#dceeff}code{font-size:12px
  <p class="small muted" id="boardStatus">未标定。需要实际拍摄四角标定纸。</p>
  <p class="small muted">重要：此步骤只建立 A4 所在平面的像素到米坐标关系；不会自动得到整栋楼尺度，也不能替代 SLAM 的内参与外参标定。</p>
  </div>
- <div class="stage"><b>2. 扫描室内环境</b><p class="small muted">从 A4 附近开始，逐步扫描并回到起点。保留原始视频，用于建立几何地图和验证闭环。</p><a class="action" href="./index.html#slamCapture">打开手机视频采集</a></div>
+ <div class="stage"><b>2. 在手机本地扫描环境</b>
+<p class="small muted">标定后拿手机在环境中走一圈。下方会采集和保存真实画面的视觉关键帧特征，显示扫描顺序和回到起点的候选识别。此图是视觉拓扑图，不是米制室内平面图。</p>
+<video id="scanCamera" autoplay muted playsinline></video>
+<div class="grid"><button id="scanStart" type="button">开始手机扫描</button><button id="scanStop" class="alt" type="button" disabled>结束扫描并保存</button></div>
+<p id="scanStatus" class="small muted">未开始扫描</p>
+<canvas id="visualGraph" width="360" height="300" aria-label="真实视觉关键帧顺序和拓扑示意"></canvas>
+<div class="grid"><button id="scanExport" class="alt" type="button">导出视觉地图 JSON</button><button id="scanClear" class="alt" type="button">清空视觉地图</button></div>
+<p class="small muted">关键帧和特征保存在 Safari 当前网站的 IndexedDB。未上传视频或照片；清除 Safari 网站数据可能丢失地图。</p>
+<p><a href="./index.html#slamCapture">另存原始视频（供离线 SfM 验证）</a></p></div>
  <div class="stage"><b>3. 验证并保存地图</b><p class="small muted">需包含米制尺度已校验、建筑二维平面坐标和相机可重定位所需的特征。现有实拍 COLMAP 局部点云尚不能直接替代此地图。</p>
  <label for="mapFile">导入已完成校验的本地地图 JSON（开发接口）</label><input id="mapFile" type="file" accept=".json,application/json"><p id="mapStatus" class="small muted">尚无经过校验的米制地图。</p></div>
  </div>
@@ -39,6 +47,9 @@ input{max-width:100%;width:100%;font-size:14px;color:#dceeff}code{font-size:12px
  <video autoplay muted playsinline id="camera"></video>
  <div class="grid"><button id="startCamera" type="button">开启摄像头</button><button id="stopCamera" class="alt" type="button" disabled>关闭摄像头</button></div>
  <p class="small muted" id="cameraStatus">摄像头未开启</p>
+ <p class="small muted">本地场景识别：<strong id="recognitionStatus">未开始</strong></p>
+ <p class="small muted">匹配质量：<strong id="recognitionQuality">—</strong></p>
+ <p class="small muted">最近识别关键帧：<strong id="recognitionSequence">—</strong></p>
  <canvas id="mapCanvas" width="600" height="440" aria-label="室内二维定位地图及轨迹"></canvas>
  <p>位置：<strong id="position">尚未定位</strong></p><p>可信轨迹点：<strong id="trackCount">0</strong></p>
  <p class="small muted">只有同一已校验建筑地图坐标系内的可信米制位姿才会画到地图上。当前版本没有接通浏览器本地米制 SLAM 引擎，因此暂不绘制虚构路线。</p>
@@ -46,6 +57,6 @@ input{max-width:100%;width:100%;font-size:14px;color:#dceeff}code{font-size:12px
 </section>
 <div class="card"><h2>研发入口</h2><p class="small muted">旧版关键帧匹配、双视图 VO 和 IMU 诊断继续保留，供算法调试使用，不代表正式导航产品。</p><a href="./web-vio-demo.html">打开视觉与 IMU 诊断工具</a></div>
 </main>
-<script src="./vin-a4-board.js"></script><script src="./web-metric-map.js"></script><script src="./vin-app.js"></script>
+<script src="./web-vio-features.js"></script><script src="./web-vio-geometry.js"></script><script src="./vin-landmark-graph.js"></script><script src="./vin-scan.js"></script><script src="./vin-a4-board.js"></script><script src="./web-metric-map.js"></script><script src="./vin-app.js"></script>
 <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(()=>{});</script>
 </body></html>
