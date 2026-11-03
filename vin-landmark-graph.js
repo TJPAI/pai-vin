@@ -58,16 +58,20 @@
   c.fillStyle='#c8d8e8';c.font='14px -apple-system,sans-serif';
   c.fillText('视觉关键帧顺序图（非二维米制地图）',14,24);
   if(!graph?.frames.length){c.fillText('尚未扫描环境',14,58);return}
-  const n=graph.frames.length,cols=Math.min(12,Math.ceil(Math.sqrt(n*1.8))),rows=Math.ceil(n/cols);
-  const dx=(w-38)/Math.max(1,cols-1),dy=Math.min(35,(h-73)/Math.max(1,rows-1));
-  const xy=i=>[19+(i%cols)*dx,49+Math.floor(i/cols)*dy];
-  // A snake traversal reduces long diagram lines; no physical coordinate meaning.
-  const loc=i=>{const r=Math.floor(i/cols),j=i%cols;return xy(r%2===0?i:r*cols+(cols-1-j))};
-  c.strokeStyle='#6585a6';c.lineWidth=1.5;c.beginPath();
-  for(let i=0;i<n;i++){const [x,y]=loc(i);if(i===0)c.moveTo(x,y);else c.lineTo(x,y)}c.stroke();
-  graph.frames.forEach((f,i)=>{const [x,y]=loc(i);c.beginPath();c.arc(x,y,i===active?6:3.5,0,Math.PI*2);
-    c.fillStyle=i===active?'#ffcd5a':'#71c4ed';c.fill()});
-  if(graph.closed&&n>=12){c.fillStyle='#9ff4c7';c.fillText('检测到回访首批画面（候选闭环）',14,h-12)}
+  // Every node below is a captured viewpoint in time, not a physical XY position.
+  // Do not draw fake serpentine lines suggesting a walking route.
+  const n=graph.frames.length,cols=10,spacing=28;
+  c.fillStyle='#a5bdd5';c.font='13px -apple-system,sans-serif';
+  c.fillText('已采集 '+n+' 帧（只按时间编号）',14,45);
+  const visible=graph.frames.slice(-70),first=n-visible.length;
+  visible.forEach((f,j)=>{
+   const i=first+j,x=22+(j%cols)*Math.min(31,(w-35)/cols),y=76+Math.floor(j/cols)*spacing;
+   c.beginPath();c.arc(x,y,i===active?6:4,0,Math.PI*2);
+   c.fillStyle=i===active?'#ffce6b':'#71c4ed';c.fill();
+   if((j%cols)===0){c.fillStyle='#90a9c4';c.font='10px -apple-system';c.fillText('#'+f.id,Math.max(4,x-17),y-11)}
+  });
+  if(graph.closed){c.fillStyle='#9ff4c7';c.fillText('候选回访，不等于真实轨迹闭环',14,h-12)}
+
  }
  return {Graph,render,isPoints,MAX};
 });
