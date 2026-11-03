@@ -1,33 +1,22 @@
-# PAI-VIN V0.2 — iPhone offline feasibility prototype
+# PAI-VIN V3.2 — iPhone Safari Visual-Inertial SLAM Research
 
-**Status:** source pushed to main. GitHub Pages deployment has not yet been independently verified.
+**Current published entry:** https://tjpai.github.io/pai-vin/vin-app.html
 
-## What can be tested on a real iPhone
-1. Open the GitHub Pages URL over HTTPS in Safari.
-2. Tap **开启 IMU** and grant permission.
-3. Tap **打开摄像头**, grant permission, and save an image anchor while viewing a textured scene.
-4. Move the phone, return to the same viewpoint, and tap **尝试匹配**.
-5. Test **关闭摄像头 / 口袋**. Observe whether motion samples continue while Safari stays in the foreground.
-6. Use **自动举起检测** only as an experimental device-orientation trigger; it may fail or false-trigger.
-7. Export JSON logs and share results for algorithm tuning.
-8. Test airplane mode only after the page and scripts have successfully loaded once.
+The production-facing UI intentionally contains only:
 
-## V0.2 implementation
-- 2D binary local features and translation-consistency match gate (vision.js)
-- Motion sensor permission and basic non-calibrated step detector
-- Experimental orientation-based raise-to-scan detection, with separate permission request
-- Offline script precache, local anchor persistence, JSON measurement export
-- JavaScript syntax checks before Pages deployment
+1. **A4 physical plane reference**: capture printed four-marker A4 sheet; save four-corner plane homography (160 mm × 247 mm marker centers) in Safari. Not camera intrinsics or SLAM scale calibration.
+2. **Real camera + IMU collection and persistent feature tracking**: device motion, monotonic reception timestamps, gyro delta rotation, tracked image features with stable IDs, timing/quality diagnostics. This is **not yet six-degree-of-freedom pose or fused VIO**.
+3. **Mapping and localization status**: truthful pending stages only. No fabricated positions, no arbitrary-step trajectory plots or misleading synthetic floor plans.
 
-## Important limitations
-- **Not 3D SLAM, 2D–3D PnP, calibrated localization, or a navigation map.**
-- Matched image anchors use unvalidated estimated trajectory coordinates.
-- No automatic building mapping, floor recognition, full PDR calibration, or route planning.
-- Images are processed in the browser and not uploaded by this application.
-- Gyro integration uses a simple approximation; step length is fixed at 0.68m.
-- Magnetometer and barometer readings are not available through the current PWA sensor adapter.
-- Safari may suspend motion events if backgrounded or screen locked.
+## Status
+- Implemented: A4 planar reference UI, PWA offline caching, camera/IMU acquisition, gyro rotation preintegration, sparse image feature tracking, diagnostics export, synthetic regression tests.
+- **Not implemented:** calibrated camera–IMU time/extrinsic alignment, full VIO state estimator (position, velocity, gravity, biases and covariance), optimized sparse metric map, loop closure, cross-session re-localization, live metric 2D path.
+- No navigation or 0.5 m precision claim.
 
-## Planned demonstration
-Target date: November 7, 2026.
-The customer-facing demo must clearly distinguish measured, inferred, and simulated content.
+## Test
+On iPhone Safari, open the link above. Under section ① capture A4 and select four marker centers. Under section ② start VIO capture and inspect tracked-feature longevity, camera/IMU sample rates and timing coverage. Export sensor diagnostics if needed. Video and photos are not uploaded.
+
+## Repository cleanup
+The obsolete browser keyframe-path/normalized-step-VO demos, related scripts and tests were removed from main when V3.2 was introduced. A historical snapshot is retained in branch `archive/legacy-v3-1-experiments-20261103`. Legacy proof-of-concept UI must not be reintroduced as a substitute for an estimator. Original private video experiments are untouched.
+
+See `docs/VIO_V3_ARCHITECTURE.md` for the engineering acceptance gates. Separate offline COLMAP tooling in `tools/` is not part of the published Safari application.
