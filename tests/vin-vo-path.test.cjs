@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict');
+const V=require('../vin-vo-path.js');
+const s=new V.Sketch();
+assert.equal(s.append({ok:true,dx:1,dz:0,yaw:0}),true);
+assert.equal(s.append({ok:true,dx:0,dz:1,yaw:0}),true);
+assert.equal(s.nodes.length,3);
+assert.equal(s.nodes[2].x,1);assert.equal(s.nodes[2].y,1);
+assert.equal(s.append({ok:false,reason:'weak'}),false);
+assert.equal(s.rejected,1);
+assert.equal(s.serialize().metric,false);
+assert.equal(s.serialize().physicalDistanceKnown,false);
+const r=new V.Sketch(s.serialize());assert.deepEqual(r.nodes,s.nodes);
+assert.throws(()=>new V.Sketch({...s.serialize(),metric:true}));
+assert.equal(V.parseStep([],[],{correspond:()=>[]},{}).ok,false);
+let count=0;const ctx={fillRect(){count++},fillText(){},beginPath(){},arc(){},moveTo(){},lineTo(){},stroke(){},fill(){},set fillStyle(v){},set font(v){},set strokeStyle(v){},set lineWidth(v){}};
+V.render({width:360,height:300,getContext:()=>ctx},r);
+assert.ok(count>0);
+console.log('Real relative-VO path contract tests passed');
