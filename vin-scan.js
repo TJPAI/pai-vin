@@ -8,7 +8,8 @@
  const context=canvas.getContext('2d',{willReadFrequently:true});
  let graph=new VINLandmarks.Graph(),sketch=new VINPath.Sketch(),scanStream=null,scanTimer=null,voTimer=null,recTimer=null,db=null;
  let scanBusy=false,voBusy=false,recBusy=false,lastPlace=-1,confirmed=0,recognitions=[];
- let prevMotionFrame=null;let motionAnchor=null;let anchorAge=0;let voChecks=0,voAccepted=0,voRejected=0;const voReasons={};
+ let prevMotionFrame=null;let motionAnchor=null;let anchorAge=0;let stillFrames=0;let voChecks=0,voAccepted=0,voRejected=0;const voReasons={};
+ const diagnostics=[];const record=d=>{diagnostics.push(d);if(diagnostics.length>600)diagnostics.shift()};
  const say=(id,t)=>{if($(id))$(id).textContent=t};
  const buttons=()=>{if($('scanStart'))$('scanStart').disabled=!!scanStream;
   if($('scanStop'))$('scanStop').disabled=!scanStream};
@@ -59,28 +60,33 @@
    if(!motionAnchor)motionAnchor=now;
    if(prevMotionFrame){
     voChecks++;
-    // Stationarity is judged from adjacent camera frames, independently of
-    // the wider-baseline pose reference. Stillness MUST NOT generate motion.
+    // Keep a long-lived anchor even when a SINGLE adjacent frame differs
+    // little; otherwise slow indoor walking can never build enough parallax.
     const adjacent=VINPath.frameChange(prevMotionFrame.gray,now.gray);
-    let reason=null;
-    if(!adjacent.ok){reason=adjacent.reason;motionAnchor=now;anchorAge=0}
-    else{
-     anchorAge++;
-     const wide=VINPath.frameChange(motionAnchor.gray,now.gray);
-     const step=VINPath.parseStep(motionAnchor.points,now.points,VINGeometry,VINVO,{frameChange:wide});
+    anchorAge++;
+    const wide=VINPath.frameChange(motionAnchor.gray,now.gray);
+    let reason=null,step=null;
+    if(!adjacent.ok)stillFrames++;else stillFrames=0;
+    if(stillFrames>=4 && !wide.ok){
+     reason='stationary_frame';motionAnchor=now;anchorAge=0;
+    }else if(!wide.ok){
+     reason='accumulating_baseline';
+    }else{
+     step=VINPath.parseStep(motionAnchor.points,now.points,VINGeometry,VINVO,{frameChange:wide});
      if(step.ok){
-      // Each accepted segment is a verified two-view estimate. No
-      // three-in-a-row same-direction requirement (turns are allowed).
-      if(sketch.append(step)){voAccepted++;motionAnchor=now;anchorAge=0}
+      if(sketch.append(step)){voAccepted++;motionAnchor=now;anchorAge=0;stillFrames=0}
       else reason='sketch_limit';
-     }else{
-      reason=step.reason||'unknown';
-      // Preserve the reference briefly to collect parallax; discard it after
-      // ~3.6s so stale unrelated scenes cannot generate false displacement.
-      if(anchorAge>=8){motionAnchor=now;anchorAge=0}
-     }
+     }else reason=step.reason||'unknown';
     }
+    // Prevent comparing entirely unrelated views across very long intervals.
+    if(anchorAge>=12){motionAnchor=now;anchorAge=0}
     if(reason){voRejected++;voReasons[reason]=(voReasons[reason]||0)+1}
+    record({time:Date.now(),reason:reason||'accepted',anchorFrames:anchorAge,
+     featuresA:motionAnchor.points.length,featuresB:now.points.length,
+     photoAdjacent:{p75:adjacent.p75,p90:adjacent.p90,changed:adjacent.ok},
+     photoWide:{p75:wide.p75,p90:wide.p90,changed:wide.ok},
+     correspondences:step?.pairs??null,inliers:step?.inliers??null,
+     parallaxPx:step?.parallaxPx??null});
     VINPath.render($('voCanvas'),sketch);
     const top=Object.entries(voReasons).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>k+': '+v).join('；');
     say('voScanStatus','本次扫描检查 '+voChecks+' 次；可信运动段 '+voAccepted+'；静止/等待/拒绝 '+voRejected+'。'+(top?'原因：'+top:'')+'。非米制轨迹。');
@@ -121,7 +127,7 @@
    scanStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480}}});
    $('scanCamera').srcObject=scanStream;await $('scanCamera').play();
    buttons();say('scanStatus','摄像头已启动。扫描区域并回到起点，特征仅保存在本机。');
-   prevMotionFrame=null;motionAnchor=null;anchorAge=0;voChecks=0;voAccepted=0;voRejected=0;sketch=new VINPath.Sketch();Object.keys(voReasons).forEach(k=>delete voReasons[k]);
+   prevMotionFrame=null;motionAnchor=null;anchorAge=0;stillFrames=0;stillFrames=0;voChecks=0;voAccepted=0;voRejected=0;diagnostics.length=0;sketch=new VINPath.Sketch();Object.keys(voReasons).forEach(k=>delete voReasons[k]);
    scanTick();scanTimer=setInterval(scanTick,1400);
    voTimer=setInterval(voTick,450);
   }catch(e){
@@ -139,7 +145,7 @@
  async function clear(){
   if(scanStream)return say('scanStatus','请先停止扫描');
   if(!confirm('确定清空已保存的视觉关键帧地图？'))return;
-  graph=new VINLandmarks.Graph();sketch=new VINPath.Sketch();voChecks=0;voAccepted=0;voRejected=0;Object.keys(voReasons).forEach(k=>delete voReasons[k]);recognitions=[];lastPlace=-1;confirmed=0;
+  graph=new VINLandmarks.Graph();sketch=new VINPath.Sketch();voChecks=0;voAccepted=0;voRejected=0;diagnostics.length=0;Object.keys(voReasons).forEach(k=>delete voReasons[k]);recognitions=[];lastPlace=-1;confirmed=0;
   try{await transact('delete','current');showGraph();say('scanStatus','视觉地图已清空。')}
   catch(e){say('scanStatus','清空失败：'+e.message)}
  }
@@ -150,6 +156,17 @@
   a.href=url;a.download='pai-vin-visual-graph-'+new Date().toISOString().slice(0,10)+'.json';
   document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
   say('scanStatus','已请求下载视觉关键帧 JSON；文件非米制二维地图，不包含原始图像。');
+ }
+ function exportDiagnosis(){
+  if(!diagnostics.length)return say('voScanStatus','还没有可导出的逐帧诊断，请先扫描数秒');
+  const payload={schema:'pai-vin-vo-diagnostic-v1',version:'V2.7',createdAt:new Date().toISOString(),
+    noImages:true,metricMap:false,checks:voChecks,accepted:voAccepted,rejected:voRejected,
+    reasons:{...voReasons},samples:diagnostics};
+  const url=URL.createObjectURL(new Blob([JSON.stringify(payload)],{type:'application/json'}));
+  const a=document.createElement('a');a.href=url;a.download='pai-vin-vo-diagnostic-'+Date.now()+'.json';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+  say('voScanStatus','已请求下载逐帧诊断 JSON（仅统计和特征数量，不含图片、视频或地图坐标）');
  }
  function recognize(video){
   if(recBusy||!graph.frames.length)return;
@@ -188,6 +205,7 @@
  function init(){
   $('scanStart').onclick=startScan;$('scanStop').onclick=stopScan;
   $('scanExport').onclick=exportMap;$('scanClear').onclick=clear;
+  $('voExport').onclick=exportDiagnosis;
   showGraph();buttons();
   openDatabase().then(load).catch(e=>say('scanStatus','浏览器本地地图不可用：'+e.message));
   window.addEventListener('pagehide',()=>{stopRecognize();clearInterval(scanTimer);clearInterval(voTimer);if(scanStream)scanStream.getTracks().forEach(t=>t.stop())});
