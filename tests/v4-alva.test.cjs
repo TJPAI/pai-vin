@@ -1,0 +1,11 @@
+const fs=require('node:fs'),assert=require('node:assert/strict');
+const p=fs.readFileSync('v4-alva-test.html','utf8'),j=fs.readFileSync('v4-alva-test.js','utf8'),sw=fs.readFileSync('sw.js','utf8');
+assert.ok(p.includes('v4-alva-test.js'));assert.ok(p.includes('与V3.29隔离'));
+assert.ok(j.includes("import {AlvaAR} from './vendor/alva_ar.js'"));
+assert.ok(j.includes('alva.findCameraPose(frame)'));
+assert.ok(j.includes('metricScaleVerified:false')&&j.includes('persistentRelocalizationVerified:false'));
+assert.ok(j.includes('getUserMedia')&&!j.includes('DeviceMotionEvent'));
+assert.ok(j.includes('poseValid(p)')&&j.includes('stream.getTracks()'));
+assert.ok(sw.includes('./v4-alva-test.html')&&sw.includes('./vendor/alva_ar.js'));
+assert.ok(!p.includes('<script src="./vio-sensor-probe.js"'));
+console.log('V4 AlvaAR integration UI and safety contract PASS');
