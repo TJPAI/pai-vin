@@ -97,8 +97,16 @@ $('boardSnap').onclick=()=>{
   localStorage.removeItem('pai-vin-focal-candidate-v1');
   if(estimate.ok){
    localStorage.setItem('pai-vin-focal-candidate-v1',JSON.stringify({...estimate,boardSourceGeometry,recordedAt:new Date().toISOString()}));
-   focalSay('候选焦距 fx='+estimate.fx.toFixed(1)+'px · 模型内重投影 RMS '+estimate.reprojectionRmsPx.toFixed(2)+'px · 逐视角最大 '+estimate.maxViewReprojectionRmsPx.toFixed(2)+'px · 留一法波动 '+(100*estimate.leaveOneOutRelativeSpread).toFixed(1)+'%。此误差仅是同一组四角的模型拟合，不是独立验证，尚未标定畸变、外参与时间偏移。');
-   say('A4平面参照已保存；多视角焦距候选已产生，详情见下方诊断。尚不能启用VIO。');
+   const q=estimate.quality;
+   const label=q?.status==='review'?'需复核':'候选一致性较好';
+   const reasons={limited_perspective_diversity:'倾斜角差异不足',
+    leave_one_out_focal_variation_gt_1pct:'留一法焦距波动超过1%',
+    in_sample_reprojection_gt_1px:'模型内RMS超过1px',
+    individual_view_fit_gt_1_8px:'有单视角拟合超过1.8px'};
+   focalSay('标定画布640×480；候选焦距 fx='+estimate.fx.toFixed(1)+'px · 质量提示：'+label+
+    (q?.reasons?.length?'（'+q.reasons.map(x=>reasons[x]||x).join('、')+'）':'')+
+    ' · 模型内重投影 RMS '+estimate.reprojectionRmsPx.toFixed(2)+'px · 逐视角最大 '+estimate.maxViewReprojectionRmsPx.toFixed(2)+'px · 留一法波动 '+(100*estimate.leaveOneOutRelativeSpread).toFixed(1)+'%。此误差仅是同一组四角的模型拟合，不是独立验证，尚未标定畸变、外参与时间偏移。');
+   say('A4平面参照已保存；多视角焦距候选已产生。'+(q?.status==='review'?'当前标定存在质量风险，请调整倾斜角度补拍。':'当前候选一致性较好，但未经独立验证。')+'尚不能启用正式视觉融合。');
   }else{
    focalSay('多视角 '+focalSamples.length+'/5（最多12组）：'+estimate.reason+(existing?'。重复视角未计数。':'。请改变A4倾斜方向。')+'；可导出本次角点供分析。');
    say('A4平面参照已保存；单张照片已完成平面参照，不等于内参标定。');

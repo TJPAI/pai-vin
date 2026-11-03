@@ -68,6 +68,26 @@ function constrainedReprojection(view,H,f,cx,cy){
  }
  return Math.sqrt(sum/4);
 }
+// Repeatability/identifiability QA on the SAME corner set, not accuracy certification.
+function quality(views,width,height,estimateResult){
+ if(!estimateResult?.ok)return {status:'unavailable',reasons:['no_valid_focal_candidate'],independentValidation:false};
+ const computed=views.map(v=>candidate(v,width,height));
+ const tilts=computed.map(x=>x?.tilt??0);
+ const spread=Math.max(...tilts)-Math.min(...tilts);
+ const leaveOneOut=estimateResult.leaveOneOutRelativeSpread;
+ const perView=estimateResult.perViewReprojectionRmsPx||[];
+ const reasons=[];
+ if(spread<.015)reasons.push('limited_perspective_diversity');
+ if(leaveOneOut>.01)reasons.push('leave_one_out_focal_variation_gt_1pct');
+ if(estimateResult.reprojectionRmsPx>1)reasons.push('in_sample_reprojection_gt_1px');
+ if(perView.some(x=>x>1.8))reasons.push('individual_view_fit_gt_1_8px');
+ return {status:reasons.length?'review':'candidate_consistent',
+  reasons,tiltSpread:spread,tilts,leaveOneOutRelativeSpread:leaveOneOut,
+  thresholdRelative:0.01,inSampleReprojectionRmsPx:estimateResult.reprojectionRmsPx,
+  independentValidation:false,distortionEstimated:false,
+  crossSessionRepeatabilityVerified:false,
+  certifiedIntrinsics:false};
+}
 function estimate(views,width,height){
  if(!Number.isInteger(width)||!Number.isInteger(height)||width<100||height<100)
   return {ok:false,reason:'invalid_resolution'};
@@ -106,7 +126,10 @@ function estimate(views,width,height){
  const reprojectionRmsPx=Math.sqrt(perViewReprojectionRmsPx.reduce((sum,x)=>sum+x*x,0)/good.length);
  const maxViewReprojectionRmsPx=Math.max(...perViewReprojectionRmsPx);
  if(residual>.025||stability>.15||reprojectionRmsPx>2||maxViewReprojectionRmsPx>3)return {ok:false,reason:'multi_view_inconsistent',residual,leaveOneOutRelativeSpread:stability,reprojectionRmsPx,maxViewReprojectionRmsPx};
+ const qualitySummary=quality(views,width,height,{ok:true,leaveOneOutRelativeSpread:stability,
+  reprojectionRmsPx,perViewReprojectionRmsPx});
  return {ok:true,fx:f,fy:f,cx:width/2,cy:height/2,width,height,views:good.length,
+  quality:qualitySummary,
   constraintRms:residual,leaveOneOutRelativeSpread:stability,
   reprojectionRmsPx,maxViewReprojectionRmsPx,perViewReprojectionRmsPx,
   reprojectionMeasurement:'same_four_markers_constrained_model_fit_not_independent',
@@ -114,5 +137,5 @@ function estimate(views,width,height){
   verified:false,distortionCalibrated:false,metricPoseAvailable:false,
   source:'multi_view_a4_constrained_candidate_only'};
 }
-return {estimate,homography,candidate,constrainedReprojection};
+return {estimate,homography,candidate,constrainedReprojection,quality};
 });

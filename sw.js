@@ -1,6 +1,6 @@
 /* PAI-VIN V3.2: only current product modules are cached for offline use.
  * Legacy demos are intentionally not part of this version. */
-const CACHE='pai-vin-v3240-20261104';
+const CACHE='pai-vin-v3250-20261104';
 const CORE=['./','./index.html','./vin-app.html','./vin-app.js','./vio-focal.js','./vio-viewport.js','./manifest.json','./a4-board.html','./vin-a4-board.js','./vin-a4-detect.js','./web-vio-features.js','./vio-sensor-core.js','./vio-tracker.js','./vio-keyframes.js','./vio-initializer.js','./vio-preintegration.js','./vio-calibration.js','./vio-rotation.js','./vio-geometry.js','./vio-fusion.js','./vio-observation.js','./vio-vision-worker.js','./vio-sensor-probe.js'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const c=await caches.open(CACHE);
