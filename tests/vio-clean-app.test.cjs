@@ -10,9 +10,14 @@ assert.ok(fs.readFileSync('vio-sensor-probe.js','utf8').includes("new Worker('./
 const legacy=['vin-scan.js','vin-vo-path.js','vin-landmark-graph.js','web-vio-demo.js','web-vio-demo.html','web-vio-pose.js','web-vio-inertial.js','web-vio-geometry.js','web-metric-map.js','slam-capture.js','visualGraph','voCanvas','scanStart','scanStop','mapFile','startCamera','legacy VO'];
 for(const name of legacy){assert.ok(!page.includes(name),'legacy in UI: '+name);assert.ok(!sw.includes(name),'legacy cached: '+name)}
 assert.equal(manifest.start_url,'./vin-app.html');
-assert.ok(page.includes('V3.11 Alpha'));
+const version=page.match(/id="appVersion"[^>]*data-version="(V\\d+\\.\\d+\\.\\d+)"[^>]*>([^<]+)<\\/span>/);
+assert.ok(version,'visible version must be beside PAI-VIN header');
+assert.ok(version[2].startsWith(version[1]),'display version and data-version must match');
+assert.ok(page.includes('<title>PAI-VIN · '+version[2]+'</title>'),'browser title must share visible version');
+assert.ok(manifest.name.includes(version[1]),'PWA manifest must share visible version');
+assert.ok(sw.includes('pai-vin-v3111-ui-20261103'),'bump service worker cache with display-version release');
 assert.ok(!page.includes('boardReset')&&!page.includes('boardSave'),'manual controls must be absent');
 assert.ok(home.includes('vin-app.html'));
 const probe=fs.readFileSync('vio-sensor-probe.js','utf8');
 assert.ok(probe.includes('t-lastTrackingTime<90'),'100 ms sampler must not be throttled to 5 Hz by 120 ms gate');
-console.log('Clean V3.11 product/manifest/offline asset tests PASS');
+console.log('Clean V3.11.1 header version/manifest/offline asset tests PASS');
