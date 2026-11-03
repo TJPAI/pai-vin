@@ -67,6 +67,8 @@ jobs:
           node tests/vio-clean-app.test.cjs
           node tests/v4-alva.test.cjs
           node tests/v4-alva-segments.test.cjs
+          node --check v4-map-contract.js
+          node tests/v4-map-contract.test.cjs
       - name: Assemble minimal site
         run: |
           mkdir -p dist
