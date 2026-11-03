@@ -39,28 +39,66 @@ function nearest(a,b,w,h,x,y,px,py,search){
  }
  return {x:bx,y:by,error:best};
 }
+// Image-gradient Lucas-Kanade subpixel refinement around a validated
+// integer-pixel coarse-to-fine correspondence. No pose/scale is inferred.
+function bilinear(g,w,h,x,y){
+ if(x<0||y<0||x>=w-1||y>=h-1)return NaN;
+ const ix=Math.floor(x),iy=Math.floor(y),dx=x-ix,dy=y-iy,k=iy*w+ix;
+ return g[k]*(1-dx)*(1-dy)+g[k+1]*dx*(1-dy)+g[k+w]*(1-dx)*dy+g[k+w+1]*dx*dy;
+}
+function refineLK(prev,now,w,h,px,py,seedX,seedY){
+ if(Math.min(px,py,seedX,seedY)<5||px>=w-5||py>=h-5||seedX>=w-5||seedY>=h-5)return null;
+ const radius=2,patch=[];
+ for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++)
+  patch.push({dx,dy,value:bilinear(prev,w,h,px+dx,py+dy)});
+ let x=seedX,y=seedY;
+ for(let iter=0;iter<4;iter++){
+  if(x<5||y<5||x>=w-5||y>=h-5)return null;
+  let hxx=0,hxy=0,hyy=0,bx=0,by=0,mean=0;
+  // Compensate constant brightness shifts for consistency with SSD search.
+  for(const p of patch)mean+=bilinear(now,w,h,x+p.dx,y+p.dy)-p.value;
+  mean/=patch.length;
+  for(const p of patch){
+   const tx=x+p.dx,ty=y+p.dy;
+   const gx=(bilinear(now,w,h,tx+1,ty)-bilinear(now,w,h,tx-1,ty))*.5;
+   const gy=(bilinear(now,w,h,tx,ty+1)-bilinear(now,w,h,tx,ty-1))*.5;
+   const residual=p.value+mean-bilinear(now,w,h,tx,ty);
+   hxx+=gx*gx;hxy+=gx*gy;hyy+=gy*gy;
+   bx+=gx*residual;by+=gy*residual;
+  }
+  const det=hxx*hyy-hxy*hxy;
+  if(det<100||!Number.isFinite(det))return null;
+  const dx=(hyy*bx-hxy*by)/det,dy=(hxx*by-hxy*bx)/det;
+  if(!Number.isFinite(dx)||!Number.isFinite(dy)||Math.abs(dx)>1.5||Math.abs(dy)>1.5)return null;
+  x+=dx;y+=dy;
+  if(dx*dx+dy*dy<.0004)break;
+ }
+ if(Math.hypot(x-seedX,y-seedY)>.85)return null;
+ return {x,y};
+}
 function trackOne(prev,now,p,opts={}){
  const w=opts.w||W,h=opts.h||H;
- if(!pixels(prev,w,h,p.x,p.y))return null;
+ if(!pixels(prev,w,h,Math.round(p.x),Math.round(p.y)))return null;
  const aSmall=opts.prevSmall||down(prev,w,h),bSmall=opts.nowSmall||down(now,w,h);
- const x=p.x>>1,y=p.y>>1;
+ const ax=Math.round(p.x),ay=Math.round(p.y),x=ax>>1,y=ay>>1;
  // Three-level tracking: accommodate larger genuine inter-frame motion
  // while retaining full-resolution forward-backward validation.
  const aQuarter=opts.prevQuarter||down(aSmall,w>>1,h>>1);
  const bQuarter=opts.nowQuarter||down(bSmall,w>>1,h>>1);
- const q=nearest(aQuarter,bQuarter,w>>2,h>>2,p.x>>2,p.y>>2,p.x>>2,p.y>>2,opts.quarterSearch??5);
+ const q=nearest(aQuarter,bQuarter,w>>2,h>>2,ax>>2,ay>>2,ax>>2,ay>>2,opts.quarterSearch??5);
  const halfFromQuarter=Number.isFinite(q.error)?
   nearest(aSmall,bSmall,w>>1,h>>1,x,y,2*q.x,2*q.y,opts.halfSearch??3):
   {error:Infinity};
  const halfDirect=nearest(aSmall,bSmall,w>>1,h>>1,x,y,x,y,opts.coarseSearch??6);
  const rough=halfFromQuarter.error<=halfDirect.error?halfFromQuarter:halfDirect;
- const coarse=nearest(prev,now,w,h,p.x,p.y,2*rough.x,2*rough.y,opts.fineSearch??3);
- const local=nearest(prev,now,w,h,p.x,p.y,p.x,p.y,opts.localSearch??6);
+ const coarse=nearest(prev,now,w,h,ax,ay,2*rough.x,2*rough.y,opts.fineSearch??3);
+ const local=nearest(prev,now,w,h,ax,ay,ax,ay,opts.localSearch??6);
  const fwd=local.error<=coarse.error?local:coarse;
  if(!Number.isFinite(fwd.error)||fwd.error>(opts.maxError??360))return null;
- const back=nearest(now,prev,w,h,fwd.x,fwd.y,p.x,p.y,opts.backwardSearch??5);
- if(!Number.isFinite(back.error)||Math.hypot(back.x-p.x,back.y-p.y)>1.5)return null;
- return {x:fwd.x,y:fwd.y,error:fwd.error,fbError:Math.hypot(back.x-p.x,back.y-p.y)};
+ const back=nearest(now,prev,w,h,fwd.x,fwd.y,ax,ay,opts.backwardSearch??5);
+ if(!Number.isFinite(back.error)||Math.hypot(back.x-ax,back.y-ay)>1.5)return null;
+ const subpixel=opts.subpixel===false?null:refineLK(prev,now,w,h,p.x,p.y,fwd.x,fwd.y);
+ return {x:subpixel?.x??fwd.x,y:subpixel?.y??fwd.y,error:fwd.error,fbError:Math.hypot(back.x-ax,back.y-ay)};
 }
 function corners(gray,w=W,h=H,max=125){
  const arr=[];
@@ -139,5 +177,5 @@ class Tracker{
  }
  reset(){this.frame=null;this.tracks=[];this.nextId=1;this.frameCount=0;this.trackTotal=0;this.last=null}
 }
-return {Tracker,corners,trackOne,down,score};
+return {Tracker,corners,trackOne,down,score,refineLK,bilinear};
 });
