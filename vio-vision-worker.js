@@ -25,7 +25,7 @@ self.onmessage=(e)=>{
   const start=lastT;lastT=m.t;
   postMessage({type:'result',session:m.session,seq:m.seq,start,end:m.t,
    processingMs:performance.now()-begun,
-   tracks:{total:current.total,retained:current.retained,longLived:current.longLived,
+   tracks:{total:current.total,initial:current.initial,retained:current.retained,added:current.added,retention:current.retention,longLived:current.longLived,
     lost:current.lost,avgAge:current.avgAge,medianError:current.medianError,
     matchCount:current.matches.length},trackPoints,vision});
  }catch(error){
