@@ -1,0 +1,65 @@
+name: PAI-VIN g2o WASM isolated feasibility
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/v4-g2o-wasm-probe.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  g2o-wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '3.1.74'
+      - name: Set up Eigen3 headers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libeigen3-dev
+      - name: Pin upstream and probe g2o WASM configure/core build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p probe-g2o
+          git clone --quiet https://github.com/RainerKuemmerle/g2o.git /tmp/pai-g2o-src
+          git -C /tmp/pai-g2o-src checkout --detach fd65627348213d56866b24c0b7d054bcf105f0a5
+          test "$(git -C /tmp/pai-g2o-src rev-parse HEAD)" = fd65627348213d56866b24c0b7d054bcf105f0a5
+          echo 'Pinned RainerKuemmerle/g2o fd65627348213d56866b24c0b7d054bcf105f0a5' >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          timeout 150s emcmake cmake -S /tmp/pai-g2o-src -B /tmp/pai-g2o-wasm \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DG2O_BUILD_APPS=OFF \
+            -DG2O_BUILD_EXAMPLES=OFF -DBUILD_UNITTESTS=OFF -DG2O_BUILD_BENCHMARKS=OFF \
+            -DG2O_USE_OPENGL=OFF -DG2O_USE_OPENMP=OFF -DG2O_USE_CHOLMOD=OFF \
+            -DG2O_USE_CSPARSE=OFF -DG2O_USE_LGPL_LIBS=OFF \
+            -DG2O_USE_LOGGING=OFF -DDO_SSE_AUTODETECT=OFF \
+            -DEigen3_DIR=/usr/share/eigen3/cmake -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH \
+            > probe-g2o/configure.log 2>&1
+          cfg=$?
+          set -e
+          echo "$cfg" > probe-g2o/configure-exit-code.txt
+          echo "g2o WASM CMake configure code: $cfg" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$cfg" -ne 0 ]; then
+            grep -n -m 18 -E 'CMake Error|Could NOT find|ERROR|error:' probe-g2o/configure.log || true
+            tail -n 55 probe-g2o/configure.log
+          else
+            echo 'Configure passed; compiling actual g2o core and stuff (without LGPL solver)' >> "$GITHUB_STEP_SUMMARY"
+            set +e
+            timeout 360s emmake cmake --build /tmp/pai-g2o-wasm --target core stuff -j2 \
+              > probe-g2o/build.log 2>&1
+            built=$?
+            set -e
+            echo "$built" > probe-g2o/build-exit-code.txt
+            echo "g2o WASM core/stuff build code: $built" >> "$GITHUB_STEP_SUMMARY"
+            grep -n -m 20 -E 'error:|fatal error:|undefined symbol|gmake:.*Error' probe-g2o/build.log || true
+            tail -n 40 probe-g2o/build.log
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g2o-wasm-feasibility-evidence
+          path: probe-g2o/
+          retention-days: 14
