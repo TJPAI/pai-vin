@@ -73,5 +73,77 @@ window.PAIVIN={acceptVerifiedPose(p){
  say('position',last.x.toFixed(2)+' m，'+last.y.toFixed(2)+' m');
  say('trackCount',String(track.poses.length));draw();return true;
 },getState:()=>({mapLoaded:!!map,cameraOn:!!stream,trackPoints:track?.poses.length||0})};
+// A4 plane reference: explicit user-picked corners; NOT full camera calibration.
+let boardStream=null,boardSnapshot=false,boardCorners=[],boardResult=null;
+const boardCanvas=$('boardCanvas'),boardCtx=boardCanvas.getContext('2d');
+const boardImage=document.createElement('canvas');
+boardImage.width=boardCanvas.width;boardImage.height=boardCanvas.height;
+const boardImageCtx=boardImage.getContext('2d',{willReadFrequently:true});
+function paintBoard(){
+ const w=boardCanvas.width,h=boardCanvas.height;
+ boardCtx.fillStyle='#102139';boardCtx.fillRect(0,0,w,h);
+ if(boardSnapshot)boardCtx.drawImage(boardImage,0,0);
+ else{boardCtx.fillStyle='#acc6dd';boardCtx.font='16px -apple-system';boardCtx.fillText('请拍摄 A4 标定纸',16,36)}
+ boardCtx.lineWidth=2;boardCtx.strokeStyle='#6ce0b9';boardCtx.fillStyle='#ffcc6b';
+ boardCorners.forEach(([x,y],i)=>{
+  boardCtx.beginPath();boardCtx.arc(x,y,6,0,Math.PI*2);boardCtx.fill();
+  boardCtx.font='18px -apple-system';boardCtx.fillText(String(i+1),x+9,y-8);
+ });
+ if(boardCorners.length===4){
+  boardCtx.beginPath();boardCorners.forEach(([x,y],i)=>i?boardCtx.lineTo(x,y):boardCtx.moveTo(x,y));
+  boardCtx.closePath();boardCtx.stroke();
+ }
+}
+$('boardOpen').onclick=async()=>{
+ if(boardStream)return;
+ try{
+  boardStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:720},height:{ideal:960}}});
+  $('boardCamera').srcObject=boardStream;await $('boardCamera').play();
+  $('boardSnap').disabled=false;say('boardStatus','相机已开启。请让纸张四角都在画面里，再点击拍摄标定帧。');
+ }catch(e){say('boardStatus','标定摄像头启动失败：'+e.message)}
+};
+$('boardSnap').onclick=()=>{
+ const video=$('boardCamera');if(!boardStream||video.readyState<2)return;
+ const w=boardImage.width,h=boardImage.height;
+ boardImageCtx.fillStyle='#000';boardImageCtx.fillRect(0,0,w,h);
+ const vw=video.videoWidth,vh=video.videoHeight;
+ // Show full frame by contain, avoiding hidden crop and displaced coordinates.
+ const scale=Math.min(w/vw,h/vh),dw=vw*scale,dh=vh*scale;
+ boardImageCtx.drawImage(video,(w-dw)/2,(h-dh)/2,dw,dh);
+ boardSnapshot=true;boardCorners=[];boardResult=null;$('boardSave').disabled=true;
+ boardStream.getTracks().forEach(t=>t.stop());boardStream=null;video.srcObject=null;$('boardSnap').disabled=true;
+ paintBoard();say('boardStatus','依次点击标记中心：左上 → 右上 → 右下 → 左下（需要四个）');
+};
+boardCanvas.addEventListener('click',e=>{
+ if(!boardSnapshot||boardCorners.length>=4)return;
+ const rect=boardCanvas.getBoundingClientRect();
+ const x=(e.clientX-rect.left)*boardCanvas.width/rect.width;
+ const y=(e.clientY-rect.top)*boardCanvas.height/rect.height;
+ if(!Number.isFinite(x)||!Number.isFinite(y))return;
+ boardCorners.push([x,y]);paintBoard();
+ if(boardCorners.length===4){
+  boardResult=VINBoard.calibrate(boardCorners,boardCanvas.width,boardCanvas.height);
+  $('boardSave').disabled=!boardResult.ok;
+  say('boardStatus',boardResult.ok?'四角平面几何检测通过，重投影残差 '+boardResult.reprojectionErrorPx.toFixed(2)+' px；可保存平面参照（非 SLAM 尺度）。':
+   '标记检测未通过：'+boardResult.reason+'。请重新点选。');
+ }
+});
+$('boardReset').onclick=()=>{boardCorners=[];boardResult=null;$('boardSave').disabled=true;paintBoard();say('boardStatus','已清除角点，请重新依序点选四个中心。')};
+$('boardSave').onclick=()=>{
+ if(!boardResult?.ok)return;
+ try{
+  const result={...boardResult,recordedAt:new Date().toISOString()};
+  localStorage.setItem('pai-vin-a4-plane-v1',JSON.stringify(result));
+  say('boardStatus','A4 平面参照已保存到此浏览器。下一步可扫描环境；尚未完成 SLAM 全局米制标定。');
+ }catch(e){say('boardStatus','保存失败：'+e.message)}
+};
+try{
+ const saved=JSON.parse(localStorage.getItem('pai-vin-a4-plane-v1')||'null');
+ if(saved?.schema==='pai-vin-a4-plane-v1'&&saved.metricPlaneOnly===true)
+  say('boardStatus','检测到此前保存的 A4 平面参照（不等于已完成 SLAM 尺度标定）；可以重新拍摄。');
+}catch(e){/* storage may be unavailable */}
+window.addEventListener('pagehide',()=>{if(boardStream)boardStream.getTracks().forEach(t=>t.stop())});
+paintBoard();
+
 emptyCanvas();explain();
 })();
