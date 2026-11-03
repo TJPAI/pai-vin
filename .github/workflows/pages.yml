@@ -44,6 +44,11 @@ jobs:
           node tests/vin-landmark-graph.test.cjs
           node --check vin-vo-path.js
           node tests/vin-vo-path.test.cjs
+          node --check vio-sensor-core.js
+          node --check vio-sensor-probe.js
+          node tests/vio-sensor-core.test.cjs
+          grep -q 'vio-sensor-probe.js' vin-app.html
+          test -s docs/VIO_V3_ARCHITECTURE.md
           grep -q 'frameChange(prevMotionFrame.gray,now.gray)' vin-scan.js
           grep -q 'motionAnchor.points,now.points' vin-scan.js
           grep -q 'exportDiagnosis' vin-scan.js
