@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict');const {Trace,render}=require('../v4-alva-trace.js');const p=(x,z)=>[1,0,0,0,0,1,0,0,0,0,1,0,x,0,z,1];
+const t=new Trace();
+assert.equal(t.ingest(3,null,0,1).valid,false);
+let a=t.ingest(1,p(100,500),100,2);assert.equal(a.segmentId,1);
+a=t.ingest(1,p(103,504),200,3);assert.deepEqual(a.relativeXZ,[3,4]);
+assert.equal(t.snapshot().groups[0].points.length,2);
+t.ingest(2,null,300,4);assert.equal(t.active,null);
+a=t.ingest(1,p(-300,-500),400,5);assert.equal(a.segmentId,2);assert.deepEqual(a.relativeXZ,[0,0]);
+a=t.ingest(1,p(-299,-498),500,6);assert.deepEqual(a.relativeXZ,[1,2]);
+assert.equal(t.snapshot().groups.length,2);assert.equal(t.snapshot().coordinateFramesAligned,false);
+const calls=[];const c=new Proxy({}, {get(o,k){if(k==='canvas')return {width:360,height:390};if(k==='fillText'||k==='strokeRect'||k==='clearRect'||k==='fillRect'||k==='beginPath'||k==='moveTo'||k==='lineTo'||k==='stroke'||k==='arc'||k==='fill'||k==='save'||k==='restore'||k==='rect'||k==='clip')return (...args)=>{calls.push([k,...args])};return o[k]},set(o,k,v){o[k]=v;return true;}});
+render(c,t,360,390);assert.ok(calls.some(x=>x[0]==='lineTo'));assert.ok(calls.some(x=>x[0]==='fillText'&&String(x[1]).includes('当前')));
+t.reset();assert.equal(t.snapshot().groups.length,0);
+console.log('V4.0.4 trajectory per-reset isolation, origin, live render and export PASS');

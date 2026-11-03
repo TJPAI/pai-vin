@@ -21,7 +21,7 @@ assert.ok(fs.readFileSync('vio-sensor-probe.js','utf8').includes('appVersion:doc
 assert.ok(version[2].startsWith(version[1]),'display version and data-version must match');
 assert.ok(page.includes('<title>PAI-VIN · '+version[2]+'</title>'),'browser title must share visible version');
 assert.ok(manifest.name.includes(version[1]),'PWA manifest must share visible version');
-assert.ok(sw.includes('pai-vin-v403alva-20261104'),'V4 isolated runtime cache must update without changing V3.29 page');
+assert.ok(sw.includes('pai-vin-v404alva-20261104'),'V4 isolated runtime cache must update without changing V3.29 page');
 assert.ok(!page.includes('boardReset')&&!page.includes('boardSave'),'manual controls must be absent');
 assert.ok(home.includes('vin-app.html'));
 const board=fs.readFileSync('vin-app.js','utf8');

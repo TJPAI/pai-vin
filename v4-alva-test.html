@@ -1,12 +1,16 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>PAI-VIN V4.0 · AlvaAR隔离试验</title><style>
-*{box-sizing:border-box}body{margin:0;background:#0c1729;color:#ecf4ff;font:15px -apple-system,BlinkMacSystemFont,sans-serif}main{max-width:600px;margin:auto;padding:16px}h1{font-size:23px}h2{font-size:17px}p{line-height:1.5}section{border:1px solid #39506d;background:#172941;border-radius:14px;padding:14px;margin:12px 0}button{background:#3686e8;color:white;border:0;border-radius:9px;padding:12px 16px;font-size:15px;font-weight:650;margin:4px}button:disabled{opacity:.5}a{color:#9edbff}canvas{display:block;width:100%;aspect-ratio:3/4;border-radius:9px;background:#06101e}video{display:none}.small{color:#afc7e5;font-size:13px}code{font-size:12px;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px ui-monospace,monospace;line-height:1.5}.warn{color:#ffcf8c}.yes{color:#8ae4bf}</style></head><body><main>
-<h1>PAI-VIN <span style="color:#82e9be">V4.0.3</span> · WASM 6DoF试验</h1>
-<p class="small">AlvaAR · iPhone Safari · 与V3.29隔离 · 构建v403-alva-pose-segments-20261104</p>
+*{box-sizing:border-box}body{margin:0;background:#0c1729;color:#ecf4ff;font:15px -apple-system,BlinkMacSystemFont,sans-serif}main{max-width:600px;margin:auto;padding:16px}h1{font-size:23px}h2{font-size:17px}p{line-height:1.5}section{border:1px solid #39506d;background:#172941;border-radius:14px;padding:14px;margin:12px 0}button{background:#3686e8;color:white;border:0;border-radius:9px;padding:12px 16px;font-size:15px;font-weight:650;margin:4px}button:disabled{opacity:.5}a{color:#9edbff}canvas{display:block;width:100%;aspect-ratio:3/4;border-radius:9px;background:#06101e}#trajectory{aspect-ratio:12/13}video{display:none}.small{color:#afc7e5;font-size:13px}code{font-size:12px;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px ui-monospace,monospace;line-height:1.5}.warn{color:#ffcf8c}.yes{color:#8ae4bf}</style></head><body><main>
+<h1>PAI-VIN <span style="color:#82e9be">V4.0.4</span> · WASM 6DoF试验</h1>
+<p class="small">AlvaAR · iPhone Safari · 与V3.29隔离 · 构建v404-alva-live-trace-20261104</p>
 <section><p class="warn"><b>实验功能：</b>输出来自真实WASM视觉引擎的相机位姿候选。位姿平移<strong>没有米制尺度</strong>，暂不支持保存地图、重启恢复或跨光照定位。不能据此认定0.5米精度。</p>
 <button id="start">开启摄像头并启动WASM</button><button id="stop" disabled>停止</button><button id="export" disabled>导出诊断JSON</button>
 <p id="status" role="status">尚未启动；首次访问需联网下载引擎，随后可缓存。</p>
 <p id="metrics" class="small">等待图像</p></section>
 <section><video id="camera" autoplay muted playsinline></video><canvas id="view" width="360" height="480" aria-label="相机预览与视觉跟踪点"></canvas><p class="small">V4.0.3新增位姿分段与失跟检测（不同段的坐标不能相连）。上游状态追踪：1=有位姿、2=引擎重置、3=继续初始化；记录累计次数与特征点数。绿色圆点是相机图像特征，不是地图点。画面仅在手机本地处理，不上传。</p></section>
+<section><h2>实时俯视轨迹 <span class="small">非米制</span></h2>
+<canvas id="trajectory" width="360" height="390" aria-label="连续位姿分段轨迹，任意尺度，重置后断开"></canvas>
+<p id="trailState" class="small" role="status">等待跟踪</p>
+<p class="small">上方为当前连续段；下方是最近两段历史。不同段均采用<strong>独立局部原点</strong>，不能相互比较位置。白点是段起点，彩色圆点是当前位置，白线表示相机局部前向投影；不代表指南针方向。自适应缩放，无米制刻度。</p></section>
 <section><h2>最新相机相对位姿候选</h2><pre id="pose">等待视觉SLAM初始化</pre></section>
 <section><h2>使用方法</h2><p>启动后先缓慢移动手机，让不同距离的墙角和物体产生视差。随后平移、转弯、返回。首次成功输出位姿之前，屏幕显示“初始化中”是正常现象。请勿强制静止，也不需要A4纸。</p><p><a href="./vin-app.html">返回V3.29稳定版</a> · <a href="./v4-alva-license.html">开源许可与来源</a></p></section>
-</main><script src="./v4-alva-segments.js"></script><script type="module" src="./v4-alva-test.js"></script><script>if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});</script></body></html>
+</main><script src="./v4-alva-segments.js"></script><script src="./v4-alva-trace.js"></script><script type="module" src="./v4-alva-test.js"></script><script>if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});</script></body></html>
