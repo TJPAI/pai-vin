@@ -129,11 +129,15 @@ jobs:
           emmake cmake --build /tmp/yaml-cpp-build -j2 >> probe-results/yaml-wasm-build.log 2>&1
           emmake cmake --install /tmp/yaml-cpp-build >> probe-results/yaml-wasm-build.log 2>&1
           test -f /tmp/pai-wasm-prefix/lib/libyaml-cpp.a
+          test -f /tmp/pai-wasm-prefix/lib/cmake/yaml-cpp/yaml-cpp-config.cmake
+          find /tmp/pai-wasm-prefix -maxdepth 5 -name '*yaml*cmake' -print >> probe-results/yaml-wasm-build.log
           echo 'yaml-cpp 0.8.0 static library WASM compilation PASS' >> "$GITHUB_STEP_SUMMARY"
           set +e
           timeout 120s emcmake cmake -S /tmp/stella-vslam -B /tmp/stella-vslam/build-wasm-yaml \
             -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DUSE_ARUCO=OFF -DUSE_CCACHE=OFF \
             -DEIGEN3_INCLUDE_DIR=/usr/include/eigen3 -DCMAKE_PREFIX_PATH=/tmp/pai-wasm-prefix \
+            -Dyaml-cpp_DIR=/tmp/pai-wasm-prefix/lib/cmake/yaml-cpp \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH \
             -DCMAKE_BUILD_TYPE=Release > probe-results/stella-yaml-configure.log 2>&1
           code=$?
           set -e
