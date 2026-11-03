@@ -4,7 +4,7 @@ const G=require('../web-vio-geometry.js');
 const W=F.W,H=F.H;
 const raw=new Uint8Array(W*H*4);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){
- const z=((x>>4)+(y>>4))%2?245:15,i=(y*W+x)*4;
+ const z=((Math.imul(x+1,73856093)^Math.imul(y+1,19349663))>>>0)%256,i=(y*W+x)*4;
  raw[i]=z;raw[i+1]=z;raw[i+2]=z;raw[i+3]=255;
 }
 const gray=F.grayRGBA(raw);
