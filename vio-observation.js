@@ -18,17 +18,17 @@ function nominalIntrinsics(width,height){
  // Diagnostic ONLY, not measured camera intrinsics.
  return {fx:.94*width,fy:.94*width,cx:width/2,cy:height/2,verified:false,source:'nominal_diagnostic_only'};
 }
-function assess({tracks,previousTime,currentTime,sensorBuffer,rotationEstimator,intrinsics,width=256,height=192}){
+function assess({tracks,previousTime,currentTime,sensorBuffer,rotationEstimator,intrinsics,width=256,height=192,visualOverride}){
  if(!Number.isFinite(previousTime)||!Number.isFinite(currentTime)||currentTime<=previousTime)
   return {ok:false,reason:'invalid_frame_timing'};
  const pairs=tracksToPairs(tracks);
  const intr=intrinsics||nominalIntrinsics(width,height);
- const visual=rotationEstimator.estimate(pairs,intr);
+ const visual=visualOverride||rotationEstimator.estimate(pairs,intr);
  const window=sensorBuffer.between(previousTime,currentTime);
  const seconds=(currentTime-previousTime)/1000;
  const avgRate=window.ok?window.samples.reduce((s,x)=>s+Math.hypot(x.gx,x.gy,x.gz),0)/window.samples.length:null;
  const result={ok:Boolean(visual.ok),reason:visual.ok?'visual_rotation_observed':visual.reason,
-  visualMatchCount:pairs.length,visualInliers:visual.inliers||0,
+  visualMatchCount:visualOverride?(visual.total||0):pairs.length,visualInliers:visual.inliers||0,
   visualInlierRatio:visual.ratio??null,
   cameraRelativeAngleDeg:visual.ok?visual.theta*180/Math.PI:null,
   visualMedianResidualDeg:visual.ok?visual.medianErrorRad*180/Math.PI:null,
