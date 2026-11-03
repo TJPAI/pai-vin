@@ -37,15 +37,27 @@
   const photo=options.frameChange;
   if(!photo?.ok)return {ok:false,reason:photo?.reason||'no_frame_motion_evidence'};
   const pairs=geometry.correspond(a,b);
-  if(pairs.length<18)return {ok:false,reason:'few_correspondences',pairs:pairs.length};
+  if(pairs.length<16)return {ok:false,reason:'few_correspondences',pairs:pairs.length};
   const evidence=flowEvidence(a,b,pairs);
-  if(evidence.medianFlow<4.2||evidence.agreement<.48||evidence.spread<3)return {ok:false,reason:'incoherent_or_stationary_flow',evidence};
+  // Real camera translation produces parallax across different scene depths.
+  // Requiring a common 2D flow vector incorrectly rejects it and turns.
   const displacement=median(pairs.map(m=>Math.hypot(a[m.i].x-b[m.j].x,a[m.i].y-b[m.j].y)));
-  // Reject nearly fixed image, especially pure stationary camera.
-  if(displacement<4.0)return {ok:false,reason:'low_image_motion',pairs:pairs.length,displacement};
-  const p=vo.estimate(a,b,{pairs,focal:220,iterations:46,thresholdPx:2.0});
-  if(!p.ok||p.inliers<14||p.ratio<.42||p.cheirality<8||!p.R||!p.t)
+  if(displacement<2.5)return {ok:false,reason:'insufficient_baseline',pairs:pairs.length,displacement};
+  const coverage=new Set(pairs.map(m=>(a[m.i].x<128?0:1)+(a[m.i].y<96?0:2)));
+  if(coverage.size<3)return {ok:false,reason:'poor_image_coverage'};
+  const p=vo.estimate(a,b,{pairs,focal:220,iterations:64,thresholdPx:2.5});
+  if(!p.ok||p.inliers<14||p.ratio<.45||p.cheirality<8||!p.R||!p.t)
    return {ok:false,reason:'epipolar_unreliable',pairs:pairs.length,inliers:p.inliers||0};
+  const focal=220;
+  const rotationResidual=[];
+  for(const m of pairs){
+   const u=a[m.i],v=b[m.j],ray=[(u.x-128)/focal,(u.y-96)/focal,1];
+   const rot=p.R.map(row=>row[0]*ray[0]+row[1]*ray[1]+row[2]*ray[2]);
+   if(rot[2]<.1)continue;
+   rotationResidual.push(Math.hypot(128+focal*rot[0]/rot[2]-v.x,96+focal*rot[1]/rot[2]-v.y));
+  }
+  const parallaxPx=median(rotationResidual);
+  if(parallaxPx<2.2)return {ok:false,reason:'pure_rotation_or_no_parallax',parallaxPx};
   // Camera center displacement in previous camera coordinates: -R^T * t
   const R=p.R,t=p.t;
   const dx=-(R[0][0]*t[0]+R[1][0]*t[1]+R[2][0]*t[2]);
@@ -55,7 +67,7 @@
   const yaw=Math.atan2(R[0][2],R[2][2]);
   if(![dx,dz,yaw].every(finite)||Math.abs(yaw)>1.3)return {ok:false,reason:'unstable_rotation'};
   return {ok:true,dx:dx/horizontal,dz:dz/horizontal,yaw,displacement,inliers:p.inliers,pairs:p.matches,
-   units:'arbitrary_step',metric:false,evidence};
+   units:'arbitrary_step',metric:false,evidence,parallaxPx};
  }
  class Sketch{
   constructor(saved){
@@ -64,7 +76,7 @@
     if(saved.schema!=='pai-vin-vo-sketch-v1'||saved.metric!==false||
       !Array.isArray(saved.nodes)||saved.nodes.length<1||saved.nodes.length>200||
       !saved.nodes.every(n=>[n.x,n.y,n.heading,n.segment].every(finite)))throw Error('bad VO sketch');
-    if(saved.gateVersion!==2)throw Error('legacy untrusted VO path');
+    if(saved.gateVersion!==3)throw Error('legacy untrusted VO path');
     this.nodes=saved.nodes.map(n=>({...n}));this.rejected=Number.isInteger(saved.rejected)?saved.rejected:0;
    }
   }
@@ -82,7 +94,7 @@
    return true;
   }
   serialize(){return {schema:'pai-vin-vo-sketch-v1',units:'arbitrary_step',metric:false,
-    physicalDistanceKnown:false,headingCalibrated:false,gateVersion:2,rejected:this.rejected,nodes:this.nodes};}
+    physicalDistanceKnown:false,headingCalibrated:false,gateVersion:3,rejected:this.rejected,nodes:this.nodes};}
  }
  function render(canvas,sketch){
   const c=canvas.getContext('2d'),w=canvas.width,h=canvas.height,n=sketch?.nodes||[];
