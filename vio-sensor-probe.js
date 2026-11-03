@@ -108,7 +108,9 @@
   const t=performance.now();frameTimerTicks++;
   // Never queue multiple expensive image jobs: prioritize real IMU events.
   if(workerBusy){workerSkipped++;flushObservations();return}
-  if(t-lastTrackingTime<120){frameTooSoon++;return}
+  // The timer fires roughly every 100 ms. A 120 ms gate previously
+  // discarded every other tick and forced ~5 Hz despite ~52 ms Worker cost.
+  if(t-lastTrackingTime<90){frameTooSoon++;return}
   captureIntervalMs=Number.isFinite(lastTrackingTime)?t-lastTrackingTime:null;
   lastTrackingTime=t;
   try{
