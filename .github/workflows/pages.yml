@@ -39,6 +39,8 @@ jobs:
           node --check vin-a4-board.js
           node --check vin-landmark-graph.js
           node --check vin-scan.js
+          grep -q 'setInterval(voTick,450)' vin-scan.js
+          if grep -q 'snake traversal' vin-landmark-graph.js; then exit 1; fi
           node tests/vin-landmark-graph.test.cjs
           node --check vin-vo-path.js
           node tests/vin-vo-path.test.cjs
