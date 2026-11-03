@@ -1,0 +1,12 @@
+const assert=require('node:assert/strict'),{Segments}=require('../v4-alva-segments.js');const s=new Segments();
+const p=x=>[1,0,0,0,0,1,0,0,0,0,1,0,x,0,0,1];
+let x=s.update(3,null,0,1);assert.equal(x.segmentId,null);
+x=s.update(1,p(0),100,2);assert.equal(x.segmentId,1);assert.equal(x.jump,null);
+x=s.update(1,p(1),200,3);assert.equal(x.segmentFrames,2);assert.equal(x.jump,1);
+x=s.update(2,null,300,4);assert.equal(x.segmentId,null);
+x=s.update(1,p(300),400,5);assert.equal(x.segmentId,2);assert.equal(x.jump,null);
+x=s.update(1,p(310),500,6);assert.equal(x.jump,10);
+const v=s.snapshot();assert.equal(v.longestFrames,2);assert.equal(v.segments,2);
+assert.equal(v.maxAdjacentStepArbitraryUnits,10);assert.equal(v.segmentsSummary[0].endReason,'native_reset');
+assert.equal(v.metricScaleVerified,false);assert.equal(v.worldMapContinuityVerified,false);
+s.reset();assert.equal(s.snapshot().segments,0);console.log('V4.0.3 native pose segmentation safeguards PASS');

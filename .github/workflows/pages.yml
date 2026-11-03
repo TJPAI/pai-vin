@@ -66,12 +66,13 @@ jobs:
           node tests/web-vio-features.test.cjs
           node tests/vio-clean-app.test.cjs
           node tests/v4-alva.test.cjs
+          node tests/v4-alva-segments.test.cjs
       - name: Assemble minimal site
         run: |
           mkdir -p dist
           cp index.html vin-app.html vin-app.js vio-focal.js vio-viewport.js manifest.json a4-board.html a4-grid-board.html vin-a4-board.js vin-a4-detect.js vio-grid-board.js web-vio-features.js vio-sensor-core.js vio-tracker.js vio-keyframes.js vio-track-repair.js vio-initializer.js vio-preintegration.js vio-calibration.js vio-rotation.js vio-geometry.js vio-vo-state.js vio-fusion.js vio-observation.js vio-vision-worker.js vio-sensor-probe.js sw.js dist/
-          cp v4-alva-test.html v4-alva-test.js v4-alva-license.html dist/
-          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 30
+          cp v4-alva-test.html v4-alva-test.js v4-alva-segments.js v4-alva-license.html dist/
+          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 31
           mkdir -p dist/vendor
           # Exact, unmodified upstream GPLv3 AlvaAR release pinned to commit and Git Blob SHA.
           curl --fail --location --silent --show-error --retry 3 \

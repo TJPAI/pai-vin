@@ -3,10 +3,12 @@
  * Raw pose is arbitrary-scale, not metric map position or relocalization.
  */
 import {AlvaAR} from './vendor/alva_ar.js';
+const {Segments}=globalThis.PAIV4Segments;
 const $=id=>document.getElementById(id);
 const W=360,H=480,canvas=$('view'),ctx=canvas.getContext('2d',{alpha:false}),video=$('camera');
 let stream=null,alva=null,running=false,raf=0,frameNumber=0,attempts=0,valid=0,errors=0,lastRun=0,costs=[],lastPose=null,history=[],startMs=0,featureCountHistory=[],frameLumaHistory=[],frameChangeHistory=[],prevSignature=null,sourceGeometry=null,rawStatuses={ready:0,reset:0,initializing:0,other:0},lastRawStatus=null,poseRawBypassAvailable=false;
 const set=t=>$('status').textContent=t;
+const segments=new Segments();
 function stop(){
  running=false;cancelAnimationFrame(raf);raf=0;
  if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;
@@ -63,16 +65,18 @@ function tick(t){
   if(ok){valid++;lastPose=Array.from(p);$('pose').textContent=JSON.stringify({matrixColumnMajor:lastPose,
     translationArbitraryUnits:lastPose.slice(12,15),metricScaleVerified:false,worldMapReidentified:false},null,2);}
   else{$('pose').textContent='初始化中 / 跟踪暂不可用；不会显示伪位姿';}
+  const segment=segments.update(lastRawStatus,ok?p:null,Math.round(t-startMs),frameNumber);
   const pts=alva.getFramePoints();featureCountHistory.push(pts.length);
   if(!ok){ctx.fillStyle='#76e8aa';
    for(const point of pts){ctx.beginPath();ctx.arc(point.x,point.y,2,0,Math.PI*2);ctx.fill();}
   }
   history.push({elapsedMs:Math.round(t-startMs),frame:frameNumber,poseAvailable:!!ok,
-   featureCount:pts.length,rawStatus:lastRawStatus,imageLumaMean:luma.mean,imageChangeMean:luma.change,processingMs:+elapsed.toFixed(2),
+   featureCount:pts.length,rawStatus:lastRawStatus,segmentId:segment.segmentId,
+   adjacentStepArbitraryUnits:segment.jump,imageLumaMean:luma.mean,imageChangeMean:luma.change,processingMs:+elapsed.toFixed(2),
    positionArbitraryUnits:ok?lastPose.slice(12,15):null});
   if(history.length>1200)history.shift();
   $('metrics').textContent='WASM尝试 '+attempts+'帧 · 有效位姿 '+valid+'帧 ('+(100*valid/attempts).toFixed(1)+'%) · P50 '+quantile(costs,.5)+'ms / P95 '+quantile(costs,.95)+'ms · 特征点 '+pts.length+' · 灰度 '+luma.mean+' · 画面变化 '+(luma.change??'—')+' · 保留视野 '+Math.round(sourceGeometry.visibleFraction*100)+'% · 底层状态 '+(lastRawStatus??'未知')+
-  ' · 重置 '+rawStatuses.reset+' · 源 '+sw+'×'+sh+' → '+W+'×'+H;
+  ' · 重置 '+rawStatuses.reset+' · 片段 '+segments.count+' · 最长连续 '+segments.maxConsecutive+'帧 · 源 '+sw+'×'+sh+' → '+W+'×'+H;
   const stage=lastRawStatus===2?'引擎内部已重置（检查跟踪点和帧率）':
    lastRawStatus===3?'引擎正在初始化（检查特征数量和实际视差）':
    lastRawStatus===1?'引擎已输出位姿状态':'引擎执行中（原始状态未获取）';
@@ -88,19 +92,20 @@ $('start').onclick=async()=>{
   alva=await AlvaAR.Initialize(W,H);
   lastRawStatus=null;rawStatuses={ready:0,reset:0,initializing:0,other:0};
   poseRawBypassAvailable=installStatusProbe(alva);
-  running=true;lastRun=0;attempts=0;valid=0;errors=0;frameNumber=0;costs=[];history=[];featureCountHistory=[];frameLumaHistory=[];frameChangeHistory=[];prevSignature=null;sourceGeometry=null;lastPose=null;startMs=performance.now();
+  running=true;lastRun=0;attempts=0;valid=0;errors=0;frameNumber=0;costs=[];history=[];featureCountHistory=[];frameLumaHistory=[];frameChangeHistory=[];prevSignature=null;sourceGeometry=null;lastPose=null;segments.reset();startMs=performance.now();
   $('stop').disabled=false;$('export').disabled=false;set('WASM已初始化；请缓慢移动手机提供视差');raf=requestAnimationFrame(tick);
  }catch(e){set('启动失败：'+String(e?.message||e));stop();$('status').textContent='启动失败：'+String(e?.message||e);}
 };
 $('export').onclick=()=>{
  const data={schema:'pai-vin-v4-wasm-alva-diagnostic-v1',engine:'AlvaAR',upstreamCommit:'7796af500ee92001ac2a9888363ff64d7a3bee75',
-  build:'v402-alva-native-status-20261104',createdAt:new Date().toISOString(),frames:attempts,
+  build:'v403-alva-pose-segments-20261104',createdAt:new Date().toISOString(),frames:attempts,
   validPoseFrames:valid,failedFrames:attempts-valid,errors,
   processingP50Ms:quantile(costs,.5),processingP95Ms:quantile(costs,.95),
   inputResolution:[W,H],sourceGeometry,defaultFovDeg:45,
   upstreamMinTrackedForInit:50,upstreamFrameMaxCellSizePx:40,
   upstreamMaxGridCells:Math.ceil(W/40)*Math.ceil(H/40),
   rawStatuses,rawStatusProbeInstalled:poseRawBypassAvailable,
+  continuousPoseSegments:segments.snapshot(),
   featureCount:{last:featureCountHistory.at(-1)??null,p50:quantile(featureCountHistory,.5),p95:quantile(featureCountHistory,.95),max:featureCountHistory.length?Math.max(...featureCountHistory):null},
   imageLuma:{p50:quantile(frameLumaHistory,.5)},imageChange:{p50:quantile(frameChangeHistory,.5)},
   cameraFrameTimestampsHardwareVerified:false,metricScaleVerified:false,mapSaved:false,
