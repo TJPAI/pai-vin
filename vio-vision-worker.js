@@ -16,9 +16,10 @@ self.onmessage=(e)=>{
   const begun=performance.now();
   const gray=new Uint8Array(m.buffer);
   const current=tracker.update(gray,m.t);
-  let vision=null;
+  let vision=null,flow=null;
   if(lastT!==null){
    const matches=PAIVioObserve.tracksToPairs(current);
+   flow=PAIVioObserve.flowStatistics(matches);
    vision=PAIVioRotation.estimate(matches,PAIVioObserve.nominalIntrinsics(256,192));
   }
   const trackPoints=tracker.tracks.map(({x,y,age})=>({x,y,age}));
@@ -27,7 +28,7 @@ self.onmessage=(e)=>{
    processingMs:performance.now()-begun,
    tracks:{total:current.total,initial:current.initial,retained:current.retained,added:current.added,retention:current.retention,longLived:current.longLived,
     lost:current.lost,avgAge:current.avgAge,medianError:current.medianError,
-    matchCount:current.matches.length},trackPoints,vision});
+    matchCount:current.matches.length},trackPoints,vision,flow});
  }catch(error){
   postMessage({type:'error',session:m.session,seq:m.seq,message:String(error?.message||error)});
  }
