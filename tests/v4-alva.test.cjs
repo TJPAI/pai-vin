@@ -3,6 +3,10 @@ const p=fs.readFileSync('v4-alva-test.html','utf8'),j=fs.readFileSync('v4-alva-t
 assert.ok(p.includes('v4-alva-test.js'));assert.ok(p.includes('与V3.29隔离'));
 assert.ok(j.includes("import {AlvaAR} from './vendor/alva_ar.js'"));
 assert.ok(j.includes('alva.findCameraPose(frame)'));
+assert.ok(j.includes('const W=360,H=480'));
+assert.ok(j.includes('featureCountHistory'));
+assert.ok(j.includes('imageChangeMean'));
+assert.ok(p.includes('width="360" height="480"'));
 assert.ok(j.includes('metricScaleVerified:false')&&j.includes('persistentRelocalizationVerified:false'));
 assert.ok(j.includes('getUserMedia')&&!j.includes('DeviceMotionEvent'));
 assert.ok(j.includes('poseValid(p)')&&j.includes('stream.getTracks()'));

@@ -1,6 +1,6 @@
 /* PAI-VIN V3.2: only current product modules are cached for offline use.
  * Legacy demos are intentionally not part of this version. */
-const CACHE='pai-vin-v400alva-20261104';
+const CACHE='pai-vin-v401alva-20261104';
 const CORE=['./','./index.html','./vin-app.html','./vin-app.js','./vio-focal.js','./vio-viewport.js','./manifest.json','./a4-board.html','./a4-grid-board.html','./vin-a4-board.js','./vin-a4-detect.js','./vio-grid-board.js','./web-vio-features.js','./vio-sensor-core.js','./vio-tracker.js','./vio-keyframes.js','./vio-track-repair.js','./vio-initializer.js','./vio-preintegration.js','./vio-calibration.js','./vio-rotation.js','./vio-geometry.js','./vio-vo-state.js','./vio-fusion.js','./vio-observation.js','./vio-vision-worker.js','./vio-sensor-probe.js'];
 // Keep large optional WASM out of legacy V3.29 precache; cache as requested.
 const ON_DEMAND=['./v4-alva-test.html','./v4-alva-test.js','./v4-alva-license.html','./vendor/alva_ar.js','./vendor/ALVAAR-LICENSE'];
