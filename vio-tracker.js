@@ -73,11 +73,28 @@ function corners(gray,w=W,h=H,max=125){
   if(c>48)arr.push({x,y,score:c});
  }
  arr.sort((a,b)=>b.score-a.score);
- const out=[];
+ // Preserve coverage across the image instead of allowing a textured wall
+ // or poster to occupy nearly all new feature slots.
+ const cols=8,rows=6,cells=Array.from({length:cols*rows},()=>[]);
  for(const p of arr){
-  if(out.some(q=>(q.x-p.x)**2+(q.y-p.y)**2<100))continue;
-  out.push(p);if(out.length>=max)break;
- }return out;
+  const cx=Math.min(cols-1,Math.floor(p.x*cols/w));
+  const cy=Math.min(rows-1,Math.floor(p.y*rows/h));
+  cells[cy*cols+cx].push(p);
+ }
+ const out=[];
+ const insert=p=>{
+  if(out.some(q=>(q.x-p.x)**2+(q.y-p.y)**2<100))return false;
+  out.push(p);return true;
+ };
+ for(const cell of cells){
+  for(const p of cell)if(insert(p))break;
+  if(out.length>=max)return out;
+ }
+ for(const p of arr){
+  if(out.length>=max)break;
+  insert(p);
+ }
+ return out;
 }
 class Tracker{
  constructor({maxTracks=100,w=W,h=H}={}){
