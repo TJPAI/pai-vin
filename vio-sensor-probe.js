@@ -182,7 +182,7 @@
  }
  function download(){
   const {r,win}=report();
-  const data={schema:'pai-vin-vio-acquisition-v1',capturedAt:new Date().toISOString(),browserClock:'performance.now',
+  const data={schema:'pai-vin-vio-acquisition-v1',appVersion:document.getElementById('appVersion')?.dataset.version||'unknown',buildId:document.getElementById('appVersion')?.dataset.build||'unknown',capturedAt:new Date().toISOString(),browserClock:'performance.now',
    cameraExposureTimestampAvailable:false,deviceIMUExtrinsicsCalibrated:false,wasmVioEstimatorConnected:false,
    visualRotationModuleAvailable:true,visualAttitudeCorrectionEnabled:false,
    twoViewEpipolarDiagnostic:{accepted:epipolarAccepted,rejected:epipolarRejected,last:lastEpipolar,metricPoseAvailable:false},
