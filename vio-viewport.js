@@ -12,10 +12,20 @@ function rect(sourceWidth,sourceHeight,canvasWidth,canvasHeight,fit){
  const scale=fit==='contain'?Math.min(sx,sy):fit==='cover'?Math.max(sx,sy):null;
  const scaleX=scale??sx,scaleY=scale??sy;
  return {ok:true,sourceWidth,sourceHeight,canvasWidth,canvasHeight,fit,
+  visibleFraction:fit==='cover'?Math.min(1,(canvasWidth*canvasHeight)/(sourceWidth*sourceHeight*scaleX*scaleY)):1,
   scaleX,scaleY,offsetX:(canvasWidth-sourceWidth*scaleX)/2,
   offsetY:(canvasHeight-sourceHeight*scaleY)/2,
   aspectDistorted:Math.abs(scaleX-scaleY)>1e-8,
   sourceFrameRotated:false};
+}
+function sourceCrop(g){
+ if(!g?.ok||g.fit!=='cover'||g.aspectDistorted)
+  return {ok:false,reason:'requires_undistorted_cover'};
+ const x=Math.max(0,-g.offsetX/g.scaleX),y=Math.max(0,-g.offsetY/g.scaleY);
+ const width=g.canvasWidth/g.scaleX,height=g.canvasHeight/g.scaleY;
+ if(x+width>g.sourceWidth+1e-6||y+height>g.sourceHeight+1e-6)
+  return {ok:false,reason:'crop_outside_video'};
+ return {ok:true,x,y,width,height};
 }
 function transform(K,from,to){
  if(!from?.ok||!to?.ok||![K?.fx,K?.fy,K?.cx,K?.cy].every(Number.isFinite))
@@ -49,5 +59,5 @@ function compatibility(calibration,tracking,opts={}){
   sameSourceDimensions:true,candidateCoordinateTransformAvailable:true,
   metricPoseAvailable:false};
 }
-return {rect,transform,compatibility};
+return {rect,sourceCrop,transform,compatibility};
 });

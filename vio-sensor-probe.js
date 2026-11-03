@@ -72,7 +72,7 @@
    (focal?.boardSourceGeometry?'标定源 '+focal.boardSourceGeometry.sourceWidth+'×'+focal.boardSourceGeometry.sourceHeight+'；':'标定源画幅未知；')+
    (geometryCheck.ok?'同一摄像头会话：图像变换可用；':'焦距不能直接套用（'+geometryCheck.reason+'）；')+
    (geometryCheck.candidateIntrinsics?'跟踪图像候选焦距 fx='+geometryCheck.candidateIntrinsics.fx.toFixed(1)+'px；':'')+
-   '候选未完成完整标定，视觉仍用名义焦距诊断。';
+   '跟踪采用等比居中裁剪'+(trackSourceGeometry?.visibleFraction!==undefined?'（保留 '+(100*trackSourceGeometry.visibleFraction).toFixed(1)+'% 图像面积）':'')+'；候选未完成完整标定，视觉仍用名义焦距诊断。';
   const el=$('vioCalibrationStatus');
   if(el)el.textContent='联合估计标定检查：'+(readiness.a4PlaneAvailable?'A4 平面参照已保存；':'A4 平面参照未提供；')+
    '相机内参、相机—IMU 外参与真实曝光时间偏移均未验证，视觉惯性位置融合保持关闭。';
@@ -151,8 +151,10 @@
   lastTrackingTime=t;
   try{
    const started=performance.now();
-   trackSourceGeometry=PAIVioViewport.rect(v.videoWidth,v.videoHeight,256,192,'stretch');
-   trackContext.drawImage(v,0,0,256,192);
+   trackSourceGeometry=PAIVioViewport.rect(v.videoWidth,v.videoHeight,256,192,'cover');
+   const crop=PAIVioViewport.sourceCrop(trackSourceGeometry);
+   if(!crop.ok)throw Error('video_crop_'+crop.reason);
+   trackContext.drawImage(v,crop.x,crop.y,crop.width,crop.height,0,0,256,192);
    const data=trackContext.getImageData(0,0,256,192).data;
    const gray=VINFeatures.grayRGBA(data);
    captureCostMs=performance.now()-started;
