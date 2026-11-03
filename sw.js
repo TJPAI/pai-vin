@@ -1,40 +1,31 @@
-/* PAI-VIN V0.6.1: network-first for HTML and application code; offline fallback.
-   Avoid cache-first updates trapping Safari on an old release. */
-const CACHE='pai-vin-v311-20261103';
-const CORE=['./','./index.html','./manifest.json','./a4-board.html','./slam-capture.js','./web-vio-demo.html','./web-vio-demo.js','./web-vio-geometry.js','./web-vio-features.js','./web-vio-pose.js','./web-vio-inertial.js','./vin-app.html','./vin-app.js','./web-metric-map.js','./vin-a4-board.js','./vin-landmark-graph.js','./vin-scan.js','./vin-vo-path.js','./vio-sensor-core.js','./vio-sensor-probe.js','./vio-tracker.js'];
-self.addEventListener('install',event=>{
-  event.waitUntil((async()=>{
-    const cache=await caches.open(CACHE);
-    await cache.addAll(CORE.map(url=>new Request(url,{cache:'reload'})));
-    await self.skipWaiting();
-  })());
-});
-self.addEventListener('activate',event=>{
-  event.waitUntil((async()=>{
-    const keys=await caches.keys();
-    await Promise.all(keys.filter(k=>k.startsWith('pai-vin-')&&k!==CACHE).map(k=>caches.delete(k)));
-    await self.clients.claim();
-  })());
-});
+/* PAI-VIN V3.2: only current product modules are cached for offline use.
+ * Legacy demos are intentionally not part of this version. */
+const CACHE='pai-vin-v320-20261103';
+const CORE=['./','./index.html','./vin-app.html','./vin-app.js','./manifest.json','./a4-board.html','./vin-a4-board.js','./web-vio-features.js','./vio-sensor-core.js','./vio-tracker.js','./vio-sensor-probe.js'];
+self.addEventListener('install',event=>event.waitUntil((async()=>{
+ const c=await caches.open(CACHE);
+ await c.addAll(CORE.map(url=>new Request(url,{cache:'reload'})));
+ await self.skipWaiting();
+})()));
+self.addEventListener('activate',event=>event.waitUntil((async()=>{
+ const all=await caches.keys();
+ await Promise.all(all.filter(x=>x.startsWith('pai-vin-')&&x!==CACHE).map(x=>caches.delete(x)));
+ await self.clients.claim();
+})()));
 self.addEventListener('fetch',event=>{
-  const req=event.request;
-  if(req.method!=='GET'||new URL(req.url).origin!==self.location.origin)return;
-  event.respondWith((async()=>{
-    const cache=await caches.open(CACHE);
-    const url=new URL(req.url);
-    const isAppAsset=req.mode==='navigate'||/\.(?:html|js|json)$/.test(url.pathname);
-    if(isAppAsset){
-      try{
-        const fresh=await fetch(new Request(req,{cache:'no-store'}));
-        if(fresh.ok)await cache.put(req,fresh.clone()).catch(()=>{});
-        return fresh;
-      }catch(e){
-        const hit=await caches.match(req,{ignoreSearch:true});
-        if(hit)return hit;
-        if(req.mode==='navigate'){const shell=await cache.match('./index.html');if(shell)return shell}
-        throw e;
-      }
-    }
-    return (await cache.match(req))||fetch(req);
-  })());
+ const req=event.request,url=new URL(req.url);
+ if(req.method!=='GET'||url.origin!==self.location.origin)return;
+ const isCurrent=CORE.some(x=>new URL(x,self.registration.scope).pathname===url.pathname);
+ if(!isCurrent)return;
+ event.respondWith((async()=>{
+  try{
+   const response=await fetch(new Request(req,{cache:'no-store'}));
+   if(response.ok){const cache=await caches.open(CACHE);await cache.put(req,response.clone()).catch(()=>{})}
+   return response;
+  }catch(e){
+   const cached=await caches.match(req,{ignoreSearch:true});
+   if(cached)return cached;
+   throw e;
+  }
+ })());
 });
