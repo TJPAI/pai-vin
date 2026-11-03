@@ -156,6 +156,7 @@ jobs:
           mkdir -p probe-results
           echo 'Attempting a REAL OpenCV Emscripten static build. No host OpenCV libraries are used.' >> "$GITHUB_STEP_SUMMARY"
           git clone --depth 1 --branch 4.8.1 https://github.com/opencv/opencv.git /tmp/pai-opencv-src
+          test "$(git -C /tmp/pai-opencv-src rev-parse HEAD)" = 5199850039ad23f1f0e6cccea5061a9fea5efca6
           set +e
           timeout 180s emcmake cmake -S /tmp/pai-opencv-src -B /tmp/pai-opencv-build \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/tmp/pai-wasm-prefix \
@@ -198,7 +199,10 @@ jobs:
               tail -n 55 probe-results/stella-opencv-configure.log
             else
               echo "OpenCV WASM compile BLOCKED (code $build_code)" >> "$GITHUB_STEP_SUMMARY"
-              tail -n 90 probe-results/opencv-wasm-build.log
+              echo '--- FIRST compiler/link errors ---'
+              grep -n -m 20 -E 'error:|fatal error:|undefined symbol|No rule to make|gmake:.*Error' probe-results/opencv-wasm-build.log | tee probe-results/opencv-first-errors.txt || true
+              echo '--- build log tail ---'
+              tail -n 55 probe-results/opencv-wasm-build.log
             fi
           fi
           set -e
