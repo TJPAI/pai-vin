@@ -28,5 +28,17 @@ assert.ok(Number.isInteger(two.tracks.recoveryAttempts)&&Number.isInteger(two.tr
 assert.ok(two.vision&&typeof two.vision.ok==='boolean');
 assert.ok(Number.isFinite(two.processingMs));
 assert.ok(two.stageTiming&&['trackingMs','rotationMs','geometryMs'].every(x=>Number.isFinite(two.stageTiming[x])),'worker must report stage timings');
+assert.equal(two.candidateAB,null,'no candidate means no A/B');
+for(let i=3;i<=5;i++)sandbox.onmessage({data:{type:'frame',session:7,seq:i,t:100+i*100,
+ buffer:shift(gray,2*(i-1),i-1).buffer,candidateIntrinsics:{
+ fx:261.85,fy:261.85,cx:128,cy:96,width:256,height:192,verified:false}}});
+const ab=answers.at(-1);
+assert.equal(ab.type,'result',JSON.stringify(ab));
+assert.ok(ab.candidateAB&&ab.candidateAB.matchedInput);
+assert.equal(ab.candidateAB.candidateVerified,false);
+assert.equal(ab.candidateAB.metricPoseAvailable,false);
+assert.ok(typeof ab.candidateAB.nominal.rotation.ok==='boolean');
+assert.ok(typeof ab.candidateAB.candidate.epipolar.ok==='boolean');
+assert.ok(ab.stageTiming.abCostMs>=0);
 assert.ok(!Object.hasOwn(two,'metricPosition')&&!Object.hasOwn(two,'poseWorld'));
 console.log('VIO Worker integration protocol tests PASS');

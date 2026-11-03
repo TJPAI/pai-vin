@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs');
 const page=fs.readFileSync('vin-app.html','utf8'),home=fs.readFileSync('index.html','utf8');
 const sw=fs.readFileSync('sw.js','utf8'),manifest=JSON.parse(fs.readFileSync('manifest.json','utf8'));
-const required=['boardCamera','boardCanvas','boardOpen','boardSnap','boardStatus','boardFocalStatus','boardExport','vioDev','vioVideo','vioStart','vioStop','vioTrackCanvas','vioTrackNumbers','vioInitStatus','vioPreintegrationStatus','vioCalibrationStatus','vioGeometryStatus','vioFusionStatus','vioNumbers','vioExport','vioStatus'];
+const required=['boardCamera','boardCanvas','boardOpen','boardSnap','boardStatus','boardFocalStatus','boardExport','vioDev','vioVideo','vioStart','vioStop','vioTrackCanvas','vioTrackNumbers','vioInitStatus','vioPreintegrationStatus','vioCalibrationStatus','vioGeometryStatus','vioCandidateABStatus','vioFusionStatus','vioNumbers','vioExport','vioStatus'];
 for(const id of required)assert.ok(page.includes('id="'+id+'"'),'missing '+id);
 const scripts=['vin-a4-board.js','vin-a4-detect.js','vin-app.js','vio-focal.js','vio-viewport.js','web-vio-features.js','vio-sensor-core.js','vio-tracker.js','vio-initializer.js','vio-preintegration.js','vio-calibration.js','vio-rotation.js','vio-fusion.js','vio-observation.js','vio-sensor-probe.js'];
 for(const name of scripts){assert.ok(page.includes('src="./'+name+'"'),'missing '+name);assert.ok(sw.includes("'./"+name+"'"),'not cached '+name)}
@@ -12,12 +12,12 @@ for(const name of legacy){assert.ok(!page.includes(name),'legacy in UI: '+name);
 assert.equal(manifest.start_url,'./vin-app.html');
 const version=page.match(/id="appVersion"[^>]*data-version="(V[0-9.]+)"[^>]*>([^<]+)<[/]span>/);
 assert.ok(version,'visible version must be beside PAI-VIN header');
-assert.ok(page.includes('data-build="v322-motion-prior-recovery-20261104"'),'build identifier must be visible in document metadata');
+assert.ok(page.includes('data-build="v323-intrinsics-matched-ab-20261104"'),'build identifier must be visible in document metadata');
 assert.ok(fs.readFileSync('vio-sensor-probe.js','utf8').includes('appVersion:document.getElementById'),'diagnostic export must identify actual running UI version');
 assert.ok(version[2].startsWith(version[1]),'display version and data-version must match');
 assert.ok(page.includes('<title>PAI-VIN · '+version[2]+'</title>'),'browser title must share visible version');
 assert.ok(manifest.name.includes(version[1]),'PWA manifest must share visible version');
-assert.ok(sw.includes('pai-vin-v3220-20261104'),'bump service worker cache with display-version release');
+assert.ok(sw.includes('pai-vin-v3230-20261104'),'bump service worker cache with display-version release');
 assert.ok(!page.includes('boardReset')&&!page.includes('boardSave'),'manual controls must be absent');
 assert.ok(home.includes('vin-app.html'));
 const board=fs.readFileSync('vin-app.js','utf8');
@@ -25,9 +25,10 @@ assert.ok(board.includes('handoffCamera'),'calibration stream transfer must exis
 assert.ok(!board.includes('snapshot=true;corners=[];result=null;\n closeCamera();'),'snapshots must keep live camera session');
 assert.ok(page.includes('width="640" height="480"'),'calibration canvas must match 4:3 tracking source');
 const probe=fs.readFileSync('vio-sensor-probe.js','utf8');
+assert.ok(probe.includes('candidateIntrinsicsAB'),'export must contain matched-input focal A/B');
 assert.ok(probe.includes('handoffCamera?.()'),'VIO must reuse calibration camera when available');
 assert.ok(probe.includes("PAIVioViewport.rect(v.videoWidth,v.videoHeight,256,192,'cover')"),'tracking crop must preserve aspect ratio');
 assert.ok(probe.includes('sourceCrop(trackSourceGeometry)'),'tracking source crop must be explicit');
 assert.ok(!probe.includes("trackContext.drawImage(v,0,0,256,192)"),'forbid previous distorted stretching');
 assert.ok(probe.includes('t-lastTrackingTime<90'),'100 ms sampler must not be throttled to 5 Hz by 120 ms gate');
-console.log('Clean V3.22 header version/manifest/offline asset tests PASS');
+console.log('Clean V3.23 header version/manifest/offline asset tests PASS');

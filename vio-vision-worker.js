@@ -18,6 +18,7 @@ self.onmessage=(e)=>{
   const current=tracker.update(gray,m.t);
   const trackingMs=performance.now()-begun;
   let vision=null,flow=null,epipolar=null,rotationMs=0,geometryMs=0;
+  let candidateAB=null,abCostMs=0;
   if(lastT!==null){
    const matches=PAIVioObserve.tracksToPairs(current);
    flow=PAIVioObserve.flowStatistics(matches);
@@ -28,12 +29,29 @@ self.onmessage=(e)=>{
    const gt=performance.now();
    epipolar=PAIVioGeometry.estimate(matches,intr);
    geometryMs=performance.now()-gt;
+   // Matched-frame independent A/B: same exact 2D tracks, no estimator switch.
+   // Throttle expensive parallel epipolar fit to one frame per five.
+   const ci=m.candidateIntrinsics;
+   if(m.seq%5===0&&ci&&[ci.fx,ci.fy,ci.cx,ci.cy].every(Number.isFinite)&&
+      ci.fx>0&&ci.fy>0&&ci.width===256&&ci.height===192&&
+      ci.verified!==true){
+    const tAB=performance.now();
+    const candidateR=PAIVioRotation.estimate(matches,ci);
+    const candidateE=PAIVioGeometry.estimate(matches,ci);
+    const slim=o=>({ok:!!o.ok,reason:o.reason||null,inliers:o.inliers||0,
+      total:o.total||0,ratio:o.ratio??null,medianErrorRad:o.medianErrorRad??null,
+      medianSampson:o.medianSampson??null,theta:o.theta??null});
+    candidateAB={nominal:{rotation:slim(vision),epipolar:slim(epipolar)},
+      candidate:{rotation:slim(candidateR),epipolar:slim(candidateE)},
+      matchedInput:true,candidateVerified:false,metricPoseAvailable:false};
+    abCostMs=performance.now()-tAB;
+   }
   }
   const trackPoints=tracker.tracks.map(({x,y,age})=>({x,y,age}));
   const start=lastT;lastT=m.t;
   postMessage({type:'result',session:m.session,seq:m.seq,start,end:m.t,
    processingMs:performance.now()-begun,
-   stageTiming:{trackingMs,rotationMs,geometryMs},
+   stageTiming:{trackingMs,rotationMs,geometryMs,abCostMs},candidateAB,
    tracks:{total:current.total,initial:current.initial,retained:current.retained,added:current.added,retention:current.retention,longLived:current.longLived,
     lost:current.lost,avgAge:current.avgAge,medianError:current.medianError,
     recoveryAttempts:current.recoveryAttempts,recovered:current.recovered,recoveryPrior:current.recoveryPrior,
