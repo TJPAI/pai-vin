@@ -26,6 +26,8 @@ assert.equal(two.start,100);assert.equal(two.end,300);
 assert.ok(two.tracks.retained>=10,JSON.stringify(two));
 assert.ok(Number.isInteger(two.tracks.recoveryAttempts)&&Number.isInteger(two.tracks.recovered));
 assert.ok(two.vision&&typeof two.vision.ok==='boolean');
+assert.ok(two.keyframe&&two.keyframe.metricPoseAvailable===false);
+assert.equal(two.keyframe.summary.observationsOnly,true);
 assert.ok(Number.isFinite(two.processingMs));
 assert.ok(two.stageTiming&&['trackingMs','rotationMs','geometryMs'].every(x=>Number.isFinite(two.stageTiming[x])),'worker must report stage timings');
 assert.equal(two.candidateAB,null,'no candidate means no A/B');
