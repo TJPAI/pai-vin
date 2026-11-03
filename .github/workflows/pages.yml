@@ -29,6 +29,10 @@ jobs:
           node --check vio-sensor-probe.js
           node --check vio-tracker.js
           node --check vio-initializer.js
+          node --check vio-rotation.js
+          node --check vio-fusion.js
+          node tests/vio-rotation.test.cjs
+          node tests/vio-fusion.test.cjs
           node tests/vio-initializer.test.cjs
           node --check web-vio-features.js
           node --check sw.js
@@ -40,8 +44,8 @@ jobs:
       - name: Assemble minimal site
         run: |
           mkdir -p dist
-          cp index.html vin-app.html vin-app.js manifest.json a4-board.html vin-a4-board.js vin-a4-detect.js web-vio-features.js vio-sensor-core.js vio-tracker.js vio-initializer.js vio-sensor-probe.js sw.js dist/
-          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 13
+          cp index.html vin-app.html vin-app.js manifest.json a4-board.html vin-a4-board.js vin-a4-detect.js web-vio-features.js vio-sensor-core.js vio-tracker.js vio-initializer.js vio-rotation.js vio-fusion.js vio-sensor-probe.js sw.js dist/
+          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 15
           ! grep -R 'web-vio-demo\|vin-vo-path\|vin-scan' dist/
       - name: Setup Pages
         uses: actions/configure-pages@v5
