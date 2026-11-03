@@ -85,6 +85,37 @@ jobs:
           else
             echo 'Subsequent dependency blocker found; see artifact log.' >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Third configure probe - Eigen3 header-only with Emscripten
+        shell: bash
+        run: |
+          set -uo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libeigen3-dev
+          test -f /usr/include/eigen3/Eigen/src/Core/util/Macros.h
+          printf '%s\n' 'Eigen3 header-only cross compile smoke:' > probe-results/eigen-wasm-smoke.log
+          cat > /tmp/pai-eigen-smoke.cpp <<'CPP'
+          #include <Eigen/Dense>
+          #include <iostream>
+          int main(){Eigen::Vector3f a(1,2,3);std::cout<<"EIGEN_WASM_OK "<<a.squaredNorm()<<std::endl;}
+          CPP
+          em++ /tmp/pai-eigen-smoke.cpp -std=c++17 -O2 -I/usr/include/eigen3 -sENVIRONMENT=node -o /tmp/pai-eigen-smoke.js >> probe-results/eigen-wasm-smoke.log 2>&1
+          node /tmp/pai-eigen-smoke.js | tee -a probe-results/eigen-wasm-smoke.log
+          grep -q 'EIGEN_WASM_OK 14' probe-results/eigen-wasm-smoke.log
+          set +e
+          timeout 120s emcmake cmake -S /tmp/stella-vslam -B /tmp/stella-vslam/build-wasm-eigen \
+            -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DUSE_ARUCO=OFF -DUSE_CCACHE=OFF \
+            -DEIGEN3_INCLUDE_DIR=/usr/include/eigen3 \
+            -DCMAKE_BUILD_TYPE=Release > probe-results/stella-eigen-configure.log 2>&1
+          code=$?
+          set -e
+          printf '%s\n' "$code" > probe-results/eigen-configure-exit-code.txt
+          echo "Eigen3 WASM smoke passed; relaxed-OpenMP + Eigen stella configure exit $code" >> "$GITHUB_STEP_SUMMARY"
+          tail -n 70 probe-results/stella-eigen-configure.log
+          if [ "$code" -eq 0 ]; then
+            echo 'Configure succeeded; actual stella compilation and Safari execution still untested.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Next dependency blocker found; see evidence artifact.' >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Save configure evidence (including blockers)
         uses: actions/upload-artifact@v4
         with:
