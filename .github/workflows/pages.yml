@@ -1,4 +1,6 @@
 name: Publish PAI-VIN VIO PWA
+# Recovery: start a NEW run when an old run has duplicate github-pages
+# artifacts from multiple attempts; re-running the same ID accumulates them.
 on:
   push:
     branches: [main]
