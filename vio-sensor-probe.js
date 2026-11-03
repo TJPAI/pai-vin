@@ -10,6 +10,9 @@
  const trackCanvas=document.createElement('canvas');trackCanvas.width=256;trackCanvas.height=192;
  const trackContext=trackCanvas.getContext('2d',{willReadFrequently:true});
  let lastTrackingTime=-Infinity,lastTrackingReport=null;
+ let visualTime=null,lastVisual=null;
+ const visualHistory=[];const visualReasons={};
+ let visualAccepted=0,visualRejected=0;
  let stream=null,timer=null,listener=null,framesSeen=0;
  let initializer=null,attitude=null,initAttemptAt=-Infinity,initReason='等待静止初始化';
  const show=s=>{$('vioStatus').textContent=s};
@@ -20,7 +23,14 @@
   const q=lastTrackingReport;
   $('vioTrackNumbers').textContent=q?'图像跟踪点 '+q.total+' · 连续继承 '+q.retained+' · 5帧以上 '+q.longLived+' · 丢失 '+q.lost+' · 平均寿命 '+q.avgAge.toFixed(1)+' 帧':'尚未获得连续视觉特征';
   const fusionStatus=$('vioFusionStatus');
-  if(fusionStatus)fusionStatus.textContent='视觉旋转求解器已接入；视觉-IMU 姿态校正未启用：缺少实测相机内参、相机—IMU 外参及时间偏差。';
+  if(fusionStatus){
+   const last=lastVisual;
+   const recent=last?.ok?'视觉旋转 '+last.cameraRelativeAngleDeg.toFixed(2)+'°，内点 '+last.visualInliers+'/'+last.visualMatchCount:
+    (last?'视觉估计未通过：'+last.reason+'，匹配 '+last.visualMatchCount:'等待连续视觉帧');
+   fusionStatus.textContent='实时视觉观测：'+recent+'；本次通过 '+visualAccepted+' 次，未通过 '+visualRejected+' 次。'+
+    ' IMU 同步：'+(last?last.imuWindowOk?'可用':'不可用 ('+last.imuWindowReason+')':'等待')+
+    '。采用未标定名义焦距，仅作诊断，不进行姿态融合或位置输出。';
+  }
   const sensor=$('vioInitStatus');
   if(sensor){
    if(attitude){const state=attitude.snapshot();sensor.textContent='静止初始化成功 · 陀螺仪偏置 '+state.gyroBias.map(x=>x.toFixed(4)).join(', ')+' rad/s · IMU 姿态更新 '+state.samples+' 次 · 无视觉融合及米制位姿';}
@@ -40,6 +50,19 @@
     const data=trackContext.getImageData(0,0,256,192).data;
     const gray=VINFeatures.grayRGBA(data);
     lastTrackingReport=tracker.update(gray,t);
+    if(visualTime!==null){
+     try{
+      const obs=PAIVioObserve.assess({tracks:lastTrackingReport,
+       previousTime:visualTime,currentTime:t,sensorBuffer:buffer,rotationEstimator:PAIVioRotation});
+      lastVisual=obs;
+      if(obs.ok)visualAccepted++;else{visualRejected++;visualReasons[obs.reason]=(visualReasons[obs.reason]||0)+1}
+      visualHistory.push({t,reason:obs.reason,matchCount:obs.visualMatchCount,inliers:obs.visualInliers,
+       ratio:obs.visualInlierRatio,cameraAngleDeg:obs.cameraRelativeAngleDeg,
+       imuAngleDeg:obs.imuAngularMagnitudeDeg,imuOk:obs.imuWindowOk,dtMs:obs.dtMs});
+      if(visualHistory.length>200)visualHistory.shift();
+     }catch(e){lastVisual={ok:false,reason:'visual_observation_exception',visualMatchCount:0,imuWindowOk:false,imuWindowReason:e.message};visualRejected++}
+    }
+    visualTime=t;
     const output=$('vioTrackCanvas'),ctx=output.getContext('2d');
     ctx.clearRect(0,0,256,192);
     ctx.strokeStyle='#67ddb5';ctx.fillStyle='#67ddb5';ctx.lineWidth=1.1;
@@ -54,6 +77,8 @@
   if(stream)return;
   buffer.reset();tracker.reset();framesSeen=0;lastTrackingTime=-Infinity;lastTrackingReport=null;
   initializer=null;attitude=null;initAttemptAt=-Infinity;initReason='等待静止初始化';
+  visualTime=null;lastVisual=null;visualAccepted=0;visualRejected=0;visualHistory.length=0;
+  Object.keys(visualReasons).forEach(k=>delete visualReasons[k]);
   if(window.PAIVIN?.stopBoardCamera)window.PAIVIN.stopBoardCamera();
   try{
    if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){
@@ -90,6 +115,8 @@
   const data={schema:'pai-vin-vio-acquisition-v1',capturedAt:new Date().toISOString(),browserClock:'performance.now',
    cameraExposureTimestampAvailable:false,deviceIMUExtrinsicsCalibrated:false,wasmVioEstimatorConnected:false,
    visualRotationModuleAvailable:true,visualAttitudeCorrectionEnabled:false,
+   visualRotationDiagnostic:{accepted:visualAccepted,rejected:visualRejected,reasons:{...visualReasons},
+    intrinsics:'unverified_nominal',recent:visualHistory},
    metricPoseAvailable:false,containsPhotos:false,containsFrames:false,
    transport:r,window:win.ok?{ok:true,dt:win.dt,maxGapMs:win.maxGapMs}:win,
    visualTracking:lastTrackingReport?{total:lastTrackingReport.total,retained:lastTrackingReport.retained,longLived:lastTrackingReport.longLived,avgAge:lastTrackingReport.avgAge,medianError:lastTrackingReport.medianError}:null,
