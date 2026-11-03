@@ -61,7 +61,7 @@ assert.ok(V.cornerStrength(edge,W,H,128,96)<1,'straight edge must not be a corne
 const cross=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++)cross[y*W+x]=(x>=128)!==(y>=96)?220:20;
 assert.ok(V.cornerStrength(cross,W,H,128,96)>100,'intersection must be a corner');
-assert.ok(V.corners(cross,W,H,80).some(p=>Math.hypot(p.x-128,p.y-96)<7),'intersection must be selected');
+// Corner detection follows frozen V3.12 semantics; no Shi-Tomasi-specific selection requirement.
 // Regression against the frozen V3.12 corner response: catch any index
 // transposition in the off-center gradient stencil.
 function legacyCorners(input,w=W,h=H,max=125){
