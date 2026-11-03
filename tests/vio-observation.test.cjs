@@ -1,0 +1,25 @@
+const assert=require('node:assert/strict');
+const O=require('../vio-observation.js'),V=require('../vio-rotation.js');
+const K=O.nominalIntrinsics(256,192);
+assert.equal(K.verified,false);assert.equal(K.fx,256*.94);
+const R=V.expSO3([0,.035,0]),m=(A,x)=>A.map(row=>row.reduce((s,z,i)=>s+z*x[i],0));
+const matches=[];
+for(let y=20;y<175;y+=17)for(let x=15;x<240;x+=17){
+ const ray=[(x-K.cx)/K.fx,(y-K.cy)/K.fy,1],p=m(R,ray);
+ const xx=K.cx+K.fx*p[0]/p[2],yy=K.cy+K.fy*p[1]/p[2];
+ matches.push({id:matches.length+1,age:7,x:xx,y:yy,dx:xx-x,dy:yy-y});
+}
+const fakeBuf={between(t0,t1){return {ok:true,samples:Array.from({length:10},(_,i)=>({t:t0+10*i,gx:0,gy:.2,gz:0}))}}};
+const r=O.assess({tracks:{matches},previousTime:200,currentTime:300,sensorBuffer:fakeBuf,rotationEstimator:V});
+assert.equal(r.ok,true,JSON.stringify(r));assert.ok(r.visualInliers>40);
+assert.ok(r.cameraRelativeAngleDeg>1&&r.cameraRelativeAngleDeg<3);
+assert.equal(r.attitudeFused,false);
+assert.equal(r.cameraIntrinsicsVerified,false);
+assert.equal(r.metricPosition,null);
+assert.equal(O.assess({tracks:{matches},previousTime:300,currentTime:200,sensorBuffer:fakeBuf,rotationEstimator:V}).reason,'invalid_frame_timing');
+const no=O.assess({tracks:{matches:[]},previousTime:200,currentTime:300,sensorBuffer:fakeBuf,rotationEstimator:V});
+assert.equal(no.reason,'insufficient_tracks');
+const missing={between(){return {ok:false,reason:'missing_imu'}}};
+const gy=O.assess({tracks:{matches},previousTime:200,currentTime:300,sensorBuffer:missing,rotationEstimator:V});
+assert.equal(gy.ok,true);assert.equal(gy.imuWindowOk,false);
+console.log('VIO image-track/IMU observation diagnostic tests PASS');
