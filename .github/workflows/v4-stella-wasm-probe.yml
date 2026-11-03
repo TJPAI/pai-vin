@@ -154,7 +154,7 @@ jobs:
         run: |
           set -uo pipefail
           mkdir -p probe-results
-          echo 'Attempting a REAL OpenCV Emscripten static build. No host OpenCV libraries are used.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Attempting REAL OpenCV Emscripten static build with intrinsic SIMD disabled after confirmed intrin_wasm.hpp API errors. No host OpenCV libraries used.' >> "$GITHUB_STEP_SUMMARY"
           git clone --depth 1 --branch 4.8.1 https://github.com/opencv/opencv.git /tmp/pai-opencv-src
           test "$(git -C /tmp/pai-opencv-src rev-parse HEAD)" = 5199850039ad23f1f0e6cccea5061a9fea5efca6
           set +e
@@ -167,6 +167,8 @@ jobs:
             -DWITH_FFMPEG=OFF -DWITH_GSTREAMER=OFF -DWITH_GTK=OFF -DWITH_QT=OFF \
             -DWITH_OPENEXR=OFF -DWITH_JPEG=OFF -DWITH_PNG=OFF -DWITH_TIFF=OFF -DWITH_WEBP=OFF \
             -DWITH_1394=OFF -DWITH_V4L=OFF -DWITH_OPENCL=OFF \
+            -DCV_ENABLE_INTRINSICS=OFF -DCV_DISABLE_OPTIMIZATION=ON \
+            '-DCPU_BASELINE=' '-DCPU_DISPATCH=' \
             > probe-results/opencv-wasm-configure.log 2>&1
           cfg_code=$?
           echo "$cfg_code" > probe-results/opencv-configure-exit-code.txt
