@@ -29,6 +29,26 @@ for(let i=0;i<200;i++){
  const u=5+(i*17)%(W-10),v=5+(i*29)%(H-10);
  assert.ok(Math.abs(V.score(image,brightness,W,H,x,y,u,v)-referenceSSD(image,brightness,W,H,x,y,u,v))<1e-8,'one-pass SSD must be exact');
 }
+// Subpixel displacement recovery: intensity-interpolated synthetic camera motion.
+function fractionalShift(a,dx,dy){
+ const out=new Uint8Array(W*H);
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  const value=V.bilinear(a,W,H,x-dx,y-dy);
+  out[y*W+x]=Number.isFinite(value)?Math.round(value):0;
+ }
+ return out;
+}
+const frac=fractionalShift(image,.65,.35);
+const estimates=[];
+for(let y=30;y<160;y+=16)for(let x=30;x<225;x+=17){
+ const q=V.refineLK(image,frac,W,H,x,y,x+1,y);
+ if(q)estimates.push(Math.hypot(q.x-x-.65,q.y-y-.35));
+}
+assert.ok(estimates.length>=30,'KLT must refine textured tracks');
+estimates.sort((a,b)=>a-b);
+assert.ok(estimates[estimates.length>>1]<.32,'median KLT subpixel error must be below 0.32 px');
+const flatLK=new Uint8Array(W*H).fill(127);
+assert.equal(V.refineLK(flatLK,flatLK,W,H,80,80,80,80),null,'degenerate image gradients rejected');
 const tracker=new V.Tracker({maxTracks:85});
 const first=tracker.update(image,100);
 assert.ok(first.total>=35,JSON.stringify(first));
