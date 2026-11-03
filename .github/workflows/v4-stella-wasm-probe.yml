@@ -1,0 +1,66 @@
+name: PAI-VIN Stella WASM feasibility probe
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/v4-stella-wasm-probe.yml'
+      - 'tools/v4-stella/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  stella-wasm-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '3.1.74'
+      - name: Toolchain smoke (real wasm executable)
+        run: |
+          set -euxo pipefail
+          emcc --version | head -n 2
+          emcc tools/v4-stella/wasm-smoke.c -O2 -sWASM=1 -sENVIRONMENT=node -o /tmp/v4-wasm-smoke.js
+          node /tmp/v4-wasm-smoke.js | tee /tmp/v4-smoke-output.txt
+          grep -Fx 'PAI-VIN WASM toolchain smoke OK' /tmp/v4-smoke-output.txt
+          file /tmp/v4-wasm-smoke.wasm
+      - name: Fetch pinned upstream stella_vslam
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/stella-vslam
+          cd /tmp/stella-vslam
+          git init
+          git remote add origin https://github.com/stella-cv/stella_vslam.git
+          git fetch --depth 1 origin e445b5452535e781fdf6777ec33a06f5f8f5e416
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = e445b5452535e781fdf6777ec33a06f5f8f5e416
+          printf '%s\n' 'UPSTREAM_SHA=e445b5452535e781fdf6777ec33a06f5f8f5e416' > /tmp/stella-upstream.txt
+      - name: Actual Emscripten CMake configure probe
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p probe-results
+          set +e
+          timeout 120s emcmake cmake -S /tmp/stella-vslam -B /tmp/stella-vslam/build-wasm \
+            -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DUSE_ARUCO=OFF -DUSE_CCACHE=OFF \
+            -DCMAKE_BUILD_TYPE=Release > probe-results/stella-emcmake-configure.log 2>&1
+          code=$?
+          set -e
+          printf '%s\n' "$code" > probe-results/configure-exit-code.txt
+          printf '%s\n' '--- configure log tail ---'
+          tail -n 75 probe-results/stella-emcmake-configure.log
+          if [ "$code" -eq 0 ]; then
+            echo 'CMake configure SUCCESS (full SLAM wasm build still NOT verified)' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "CMake configure BLOCKED (exit code $code); no SLAM wasm build performed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "Upstream SHA e445b5452535e781fdf6777ec33a06f5f8f5e416" >> "$GITHUB_STEP_SUMMARY"
+          echo 'Toolchain smoke compiled and executed successfully; this does not verify stella itself.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Save configure evidence (including blockers)
+        uses: actions/upload-artifact@v4
+        with:
+          name: stella-v4-wasm-feasibility
+          path: probe-results/
+          retention-days: 14
