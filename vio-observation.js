@@ -28,7 +28,7 @@ function assess({tracks,previousTime,currentTime,sensorBuffer,rotationEstimator,
  const seconds=(currentTime-previousTime)/1000;
  const avgRate=window.ok?window.samples.reduce((s,x)=>s+Math.hypot(x.gx,x.gy,x.gz),0)/window.samples.length:null;
  const result={ok:Boolean(visual.ok),reason:visual.ok?'visual_rotation_observed':visual.reason,
-  visualMatchCount:visualOverride?(visual.total||0):pairs.length,visualInliers:visual.inliers||0,
+  visualMatchCount:visualOverride?(visual.total??visual.count??pairs.length):pairs.length,visualInliers:visual.inliers||0,
   visualInlierRatio:visual.ratio??null,
   cameraRelativeAngleDeg:visual.ok?visual.theta*180/Math.PI:null,
   visualMedianResidualDeg:visual.ok?visual.medianErrorRad*180/Math.PI:null,
