@@ -27,6 +27,8 @@ jobs:
           node --check slam-capture.js
           node --check web-vio-demo.js
           node --check web-vio-geometry.js
+          node --check web-vio-features.js
+          node tests/web-vio-features.test.cjs
           node tests/web-vio-geometry.test.cjs
           test -s web-vio-demo.html
           grep -q 'web-vio-demo.html' index.html
