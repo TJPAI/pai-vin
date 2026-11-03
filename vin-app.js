@@ -8,10 +8,11 @@ let boardStream=null,snapshot=false,corners=[],result=null;
  const focalStatus=$('boardFocalStatus');
  const focalSay=message=>{if(focalStatus)focalStatus.textContent=message};
  let focalLastResult=null;
+ let boardSourceGeometry=null;
  function exportFocal(){
   const data={schema:'pai-vin-focal-capture-v1',appVersion:$('appVersion')?.dataset.version||'unknown',
    recordedAt:new Date().toISOString(),imageWidth:snap.width,imageHeight:snap.height,
-   boardMarkerSpacingM:[.16,.247],samples:focalSamples.map(x=>x.corners.map(p=>p.slice())),
+   boardMarkerSpacingM:[.16,.247],boardSourceGeometry,samples:focalSamples.map(x=>x.corners.map(p=>p.slice())),
    estimate:focalLastResult,containsPhotos:false,containsFrames:false,
    warning:'Unverified constrained focal candidate; not full calibration or metric SLAM'};
   const url=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
@@ -54,7 +55,10 @@ $('boardSnap').onclick=()=>{
  const v=$('boardCamera');if(!boardStream||v.readyState<2)return;
  const w=snap.width,h=snap.height,dw=v.videoWidth,dh=v.videoHeight;
  if(!dw||!dh)return say('等待摄像头画面');
- const factor=Math.min(w/dw,h/dh),ww=dw*factor,hh=dh*factor;
+ const geometry=PAIVioViewport.rect(dw,dh,w,h,'contain');
+ if(!geometry.ok)return say('视频图像几何无效：'+geometry.reason);
+ boardSourceGeometry=geometry;
+ const factor=geometry.scaleX,ww=dw*factor,hh=dh*factor;
  snapCtx.fillStyle='#07101d';snapCtx.fillRect(0,0,w,h);
  snapCtx.drawImage(v,(w-ww)/2,(h-hh)/2,ww,hh);
  snapshot=true;corners=[];result=null;
@@ -81,7 +85,7 @@ $('boardSnap').onclick=()=>{
   // Do not let an old candidate silently survive a new, invalid session.
   localStorage.removeItem('pai-vin-focal-candidate-v1');
   if(estimate.ok){
-   localStorage.setItem('pai-vin-focal-candidate-v1',JSON.stringify({...estimate,recordedAt:new Date().toISOString()}));
+   localStorage.setItem('pai-vin-focal-candidate-v1',JSON.stringify({...estimate,boardSourceGeometry,recordedAt:new Date().toISOString()}));
    focalSay('候选焦距 fx='+estimate.fx.toFixed(1)+'px · 模型内重投影 RMS '+estimate.reprojectionRmsPx.toFixed(2)+'px · 逐视角最大 '+estimate.maxViewReprojectionRmsPx.toFixed(2)+'px · 留一法波动 '+(100*estimate.leaveOneOutRelativeSpread).toFixed(1)+'%。此误差仅是同一组四角的模型拟合，不是独立验证，尚未标定畸变、外参与时间偏移。');
    say('A4平面参照已保存；多视角焦距候选已产生，详情见下方诊断。尚不能启用VIO。');
   }else{
