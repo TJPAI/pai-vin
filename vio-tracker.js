@@ -47,7 +47,11 @@ function trackOne(prev,now,p,opts={}){
  const x=p.x>>1,y=p.y>>1;
  const rough=nearest(aSmall,bSmall,w>>1,h>>1,x,y,x,y,opts.coarseSearch??6);
  if(!Number.isFinite(rough.error)||rough.error>1000)return null;
- const fwd=nearest(prev,now,w,h,p.x,p.y,2*rough.x,2*rough.y,opts.fineSearch??3);
+ // A second full-resolution local search handles subpixel/odd-pixel moves
+ // that become ambiguous after 2x box downsampling.
+ const coarse=nearest(prev,now,w,h,p.x,p.y,2*rough.x,2*rough.y,opts.fineSearch??3);
+ const local=nearest(prev,now,w,h,p.x,p.y,p.x,p.y,opts.localSearch??6);
+ const fwd=local.error<=coarse.error?local:coarse;
  if(!Number.isFinite(fwd.error)||fwd.error>(opts.maxError??360))return null;
  const back=nearest(now,prev,w,h,fwd.x,fwd.y,p.x,p.y,opts.backwardSearch??3);
  if(!Number.isFinite(back.error)||Math.hypot(back.x-p.x,back.y-p.y)>1.5)return null;
