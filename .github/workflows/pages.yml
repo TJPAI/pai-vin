@@ -36,6 +36,8 @@ jobs:
           node --check web-metric-map.js
           node tests/web-metric-map.test.cjs
           node --check vin-app.js
+          node --check vin-a4-board.js
+          node tests/vin-a4-board.test.cjs
           test -s vin-app.html
           grep -q 'vin-app.html' index.html
           node tests/web-vio-geometry.test.cjs
