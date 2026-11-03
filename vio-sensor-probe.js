@@ -14,6 +14,7 @@
  const trackHistory=[];let captureCostMs=null,captureIntervalMs=null,frameTimerTicks=0,frameTooSoon=0;
  const visualHistory=[];const visualReasons={};const pendingObservations=[];
  let syncPassed=0,syncFailed=0,pairedPassed=0;
+ let preintPassed=0,preintFailed=0,lastPreintegration=null;
  let visualAccepted=0,visualRejected=0;
  let stream=null,timer=null,listener=null,framesSeen=0;
  let initializer=null,attitude=null,initAttemptAt=-Infinity,initReason='等待静止初始化';
@@ -42,6 +43,11 @@
     const obs=PAIVioObserve.assess({tracks:p.tracks,
      previousTime:p.start,currentTime:p.end,sensorBuffer:buffer,rotationEstimator:PAIVioRotation,
      visualOverride:p.vision,flowOverride:p.flow});
+    const bracket=buffer.between(p.start,p.end);
+    const integ=bracket.ok?PAIVioPreintegrate.integrate(bracket.samples,{gyroBias:initializer?.ok?initializer.gyroBias:[0,0,0]}):{ok:false,reason:bracket.reason};
+    if(integ.ok){preintPassed++;lastPreintegration={ok:true,dt:integ.dt,samples:integ.samples,maxGapMs:integ.maxGapMs,
+     deltaQuaternion:integ.deltaQuaternion,gravityCompensated:false,metricPoseAvailable:false};}
+    else{preintFailed++;lastPreintegration={ok:false,reason:integ.reason};}
     storeObservation(obs,p.end);
    }catch(e){
     storeObservation({ok:false,reason:'visual_observation_exception',visualMatchCount:0,
@@ -71,6 +77,10 @@
     flowInfo+(epi?' · 双视图极线 '+(epi.ok?'一致':'暂不可用 '+epi.reason)+' '+epi.inliers+'/'+epi.total+'，中位图像位移 '+(epi.medianFlowPx?.toFixed(1)??'—')+' px':'')+' IMU 数据窗口：'+(last?last.imuWindowOk?'可用':'不可用 ('+last.imuWindowReason+')':'等待')+
     '。采用未标定名义焦距，仅作诊断，不进行姿态融合或位置输出。';
   }
+  const pre=$('vioPreintegrationStatus');
+  if(pre)pre.textContent='IMU 预积分窗口 '+preintPassed+' 次成功 / '+preintFailed+' 次失败 · '+
+    (lastPreintegration?.ok?'最新 '+(lastPreintegration.dt*1000).toFixed(0)+'ms、'+lastPreintegration.samples+' 样本':lastPreintegration?'暂不可用 '+lastPreintegration.reason:'等待数据')+
+    ' · 仅为惯性因子，未经重力/外参/时间标定，不输出位置。';
   const sensor=$('vioInitStatus');
   if(sensor){
    if(attitude){const state=attitude.snapshot();sensor.textContent='静止初始化成功 · 陀螺仪偏置 '+state.gyroBias.map(x=>x.toFixed(4)).join(', ')+' rad/s · IMU 姿态更新 '+state.samples+' 次 · 无视觉融合及米制位姿';}
@@ -139,7 +149,7 @@
   workerSession++;workerSequence=0;workerBusy=false;workerProcessed=0;workerSkipped=0;workerErrors=0;workerCostMs=null;
   trackHistory.length=0;captureCostMs=null;captureIntervalMs=null;frameTimerTicks=0;frameTooSoon=0;
   initializer=null;attitude=null;initAttemptAt=-Infinity;initReason='等待静止初始化';
-  visualTime=null;lastVisual=null;lastEpipolar=null;epipolarAccepted=0;epipolarRejected=0;visualAccepted=0;visualRejected=0;syncPassed=0;syncFailed=0;pairedPassed=0;visualHistory.length=0;pendingObservations.length=0;
+  visualTime=null;lastVisual=null;lastEpipolar=null;epipolarAccepted=0;epipolarRejected=0;visualAccepted=0;visualRejected=0;syncPassed=0;syncFailed=0;pairedPassed=0;preintPassed=0;preintFailed=0;lastPreintegration=null;visualHistory.length=0;pendingObservations.length=0;
   Object.keys(visualReasons).forEach(k=>delete visualReasons[k]);
   if(window.PAIVIN?.stopBoardCamera)window.PAIVIN.stopBoardCamera();
   try{
@@ -186,6 +196,8 @@
   const data={schema:'pai-vin-vio-acquisition-v1',appVersion:document.getElementById('appVersion')?.dataset.version||'unknown',buildId:document.getElementById('appVersion')?.dataset.build||'unknown',capturedAt:new Date().toISOString(),browserClock:'performance.now',
    cameraExposureTimestampAvailable:false,deviceIMUExtrinsicsCalibrated:false,wasmVioEstimatorConnected:false,
    visualRotationModuleAvailable:true,visualAttitudeCorrectionEnabled:false,
+   imuPreintegrationDiagnostic:{passed:preintPassed,failed:preintFailed,last:lastPreintegration,
+    gravityCompensated:false,metricPoseAvailable:false,usesBrowserReceiptTimestamps:true},
    twoViewEpipolarDiagnostic:{accepted:epipolarAccepted,rejected:epipolarRejected,last:lastEpipolar,metricPoseAvailable:false},
    visualRotationDiagnostic:{accepted:visualAccepted,rejected:visualRejected,
     imuWindowsPassed:syncPassed,imuWindowsFailed:syncFailed,bothPassed:pairedPassed,
