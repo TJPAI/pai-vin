@@ -1,0 +1,22 @@
+const assert=require('node:assert/strict');
+const G=require('../web-vio-geometry.js');
+let seed=0xdeadbeef;
+function rand(){seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;return seed>>>0}
+const a=[];
+for(let y=0;y<4;y++)for(let x=0;x<6;x++)a.push({x:18+x*39,y:14+y*49,a:rand(),b:rand()});
+const angle=0.09,c=Math.cos(angle)*1.03,z=Math.sin(angle)*1.03;
+const b=a.map(p=>({x:c*p.x-z*p.y+4,y:z*p.x+c*p.y-8,a:p.a,b:p.b}));
+const v=G.verify(a,b);
+assert.equal(v.accepted,true,JSON.stringify(v));
+assert.equal(v.inliers,24);
+assert.ok(v.rmse<0.001);
+assert.equal(v.spread,4);
+const inv=G.verify(a,b.map((p,i)=>({...p,a:rand(),b:rand()})));
+assert.equal(inv.accepted,false);
+const ranked=G.rank(a,[{points:b}]);
+assert.equal(ranked.accepted,true);
+const ambiguous=G.rank(a,[{points:b},{points:b}]);
+assert.equal(ambiguous.accepted,false);
+assert.equal(ambiguous.ambiguous,true);
+assert.equal(G.verify([],[]).accepted,false);
+console.log('Safari geometry unit tests passed');
