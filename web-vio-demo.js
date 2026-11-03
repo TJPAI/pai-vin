@@ -7,7 +7,8 @@ const $=id=>document.getElementById(id);
 const W=256,H=192,MAX=60,INTERVAL=1050,TRACK_INTERVAL=240;
 const cv=document.createElement('canvas');cv.width=W;cv.height=H;
 const ctx=cv.getContext('2d',{willReadFrequently:true});
-let stream=null,mode='',timer=null,trackTimer=null,busy=false,frames=[],db=null,imu=null;\nlet lastTrackPoints=null,trackFrames=0,trackGood=0,lastTrackTime=0,visualMotion=null;
+let stream=null,mode='',timer=null,trackTimer=null,busy=false,frames=[],db=null,imu=null;
+let lastTrackPoints=null,trackFrames=0,trackGood=0,lastTrackTime=0,visualMotion=null;
 let queries=0,hits=0,attempts=0,lastCandidate=-1,candidateStreak=0,lastConfirmed=-1,route=[];
 const set=(id,v)=>{const el=$(id);if(el)el.textContent=v};
 const status=v=>set('status',v);
@@ -151,7 +152,8 @@ async function tick(){
  finally{busy=false}
 }
 function start(which){
- if(!stream)return status('请先开启摄像头');\n if(typeof VINFeatures==='undefined')return status('特征模块未加载，请刷新页面');
+ if(!stream)return status('请先开启摄像头');
+ if(typeof VINFeatures==='undefined')return status('特征模块未加载，请刷新页面');
  if(which==='localization'&&!frames.length)return status('请先建立关键帧地图');
  if(mode)return;
  mode=which;lastTrackPoints=null;trackFrames=0;trackGood=0;visualMotion=null;set('trackRate','0/0');showMotion(null);queries=0;hits=0;attempts=0;lastCandidate=-1;candidateStreak=0;lastConfirmed=-1;route=[];set('route','—');set('hits','0/0');
