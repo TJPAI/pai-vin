@@ -210,6 +210,45 @@ jobs:
             fi
           fi
           set -e
+      - name: Sixth probe - actual SQLite3 WASM static build and stella configure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /tmp/pai-wasm-prefix/lib/cmake/opencv4/OpenCVConfig.cmake
+          curl -fsSL --retry 3 https://www.sqlite.org/2024/sqlite-amalgamation-3460100.zip -o /tmp/pai-sqlite.zip
+          mkdir -p /tmp/pai-sqlite-src
+          unzip -q /tmp/pai-sqlite.zip -d /tmp/pai-sqlite-src
+          SQLITE_SRC=/tmp/pai-sqlite-src/sqlite-amalgamation-3460100
+          test -s "$SQLITE_SRC/sqlite3.c"
+          mkdir -p /tmp/pai-wasm-prefix/include /tmp/pai-wasm-prefix/lib
+          emcc -O2 -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION -c "$SQLITE_SRC/sqlite3.c" -o /tmp/pai-sqlite3.o > probe-results/sqlite-wasm-build.log 2>&1
+          emar rcs /tmp/pai-wasm-prefix/lib/libsqlite3.a /tmp/pai-sqlite3.o
+          cp "$SQLITE_SRC/sqlite3.h" /tmp/pai-wasm-prefix/include/sqlite3.h
+          cat > /tmp/pai-sqlite-smoke.c <<'EOF'
+          #include "sqlite3.h"
+          #include <stdio.h>
+          int main(void){sqlite3 *db=0;int rc=sqlite3_open(":memory:",&db);if(rc) return rc;puts("SQLITE_WASM_OK");sqlite3_close(db);return 0;}
+          EOF
+          emcc /tmp/pai-sqlite-smoke.c -O2 -I/tmp/pai-wasm-prefix/include /tmp/pai-wasm-prefix/lib/libsqlite3.a -sENVIRONMENT=node -o /tmp/pai-sqlite-smoke.js >> probe-results/sqlite-wasm-build.log 2>&1
+          node /tmp/pai-sqlite-smoke.js | tee -a probe-results/sqlite-wasm-build.log
+          grep -q SQLITE_WASM_OK probe-results/sqlite-wasm-build.log
+          echo 'SQLite3 3.46.1 WASM archive linked and executed successfully' >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          timeout 150s emcmake cmake -S /tmp/stella-vslam -B /tmp/stella-vslam/build-wasm-sqlite \
+            -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DUSE_ARUCO=OFF -DUSE_CCACHE=OFF \
+            -DEIGEN3_INCLUDE_DIR=/usr/include/eigen3 \
+            -DCMAKE_PREFIX_PATH=/tmp/pai-wasm-prefix \
+            -Dyaml-cpp_DIR=/tmp/pai-wasm-prefix/lib/cmake/yaml-cpp \
+            -DOpenCV_DIR=/tmp/pai-wasm-prefix/lib/cmake/opencv4 \
+            -DSQLite3_INCLUDE_DIR=/tmp/pai-wasm-prefix/include \
+            -DSQLite3_LIBRARY=/tmp/pai-wasm-prefix/lib/libsqlite3.a \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH -DCMAKE_BUILD_TYPE=Release \
+            > probe-results/stella-sqlite-configure.log 2>&1
+          rc=$?
+          set -e
+          echo "$rc" > probe-results/sqlite-configure-exit-code.txt
+          echo "With WASM SQLite3: stella CMake configure exit $rc (NOT full SLAM compile)" >> "$GITHUB_STEP_SUMMARY"
+          tail -n 70 probe-results/stella-sqlite-configure.log
       - name: Save configure evidence (including blockers)
         uses: actions/upload-artifact@v4
         with:
