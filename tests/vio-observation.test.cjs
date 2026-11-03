@@ -22,4 +22,13 @@ assert.equal(no.reason,'insufficient_tracks');
 const missing={between(){return {ok:false,reason:'missing_imu'}}};
 const gy=O.assess({tracks:{matches},previousTime:200,currentTime:300,sensorBuffer:missing,rotationEstimator:V});
 assert.equal(gy.ok,true);assert.equal(gy.imuWindowOk,false);
+const rejected=O.assess({tracks:{matches:[]},previousTime:200,currentTime:300,
+ sensorBuffer:fakeBuf,rotationEstimator:V,
+ visualOverride:{ok:false,reason:'rotation_geometry_unreliable',inliers:25,ratio:.6,total:42}});
+assert.equal(rejected.visualMatchCount,42,'rejected Worker rotation must report actual matches');
+assert.equal(rejected.visualInliers,25);
+const rejectedLegacy=O.assess({tracks:{matches:[]},previousTime:200,currentTime:300,
+ sensorBuffer:fakeBuf,rotationEstimator:V,
+ visualOverride:{ok:false,reason:'insufficient_tracks',count:7}});
+assert.equal(rejectedLegacy.visualMatchCount,7);
 console.log('VIO image-track/IMU observation diagnostic tests PASS');
