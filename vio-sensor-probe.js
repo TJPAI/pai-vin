@@ -93,7 +93,8 @@
    tracks:m.tracks.total,retained:m.tracks.retained,added:m.tracks.added,
    lost:m.tracks.lost,retention:m.tracks.retention,longLived:m.tracks.longLived,
    visualMatches:m.tracks.matchCount,medianPatchError:m.tracks.medianError,
-   workerProcessingMs:m.processingMs});
+   workerProcessingMs:m.processingMs,
+   stageTiming:m.stageTiming||null});
   if(trackHistory.length>200)trackHistory.shift();
   if(m.start!==null){
    pendingObservations.push({start:m.start,end:m.end,receivedAt:performance.now(),

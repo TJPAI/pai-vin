@@ -26,5 +26,6 @@ assert.equal(two.start,100);assert.equal(two.end,300);
 assert.ok(two.tracks.retained>=10,JSON.stringify(two));
 assert.ok(two.vision&&typeof two.vision.ok==='boolean');
 assert.ok(Number.isFinite(two.processingMs));
+assert.ok(two.stageTiming&&['trackingMs','rotationMs','geometryMs'].every(x=>Number.isFinite(two.stageTiming[x])),'worker must report stage timings');
 assert.ok(!Object.hasOwn(two,'metricPosition')&&!Object.hasOwn(two,'poseWorld'));
 console.log('VIO Worker integration protocol tests PASS');
