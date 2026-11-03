@@ -46,14 +46,14 @@ jobs:
             grep -n -m 18 -E 'CMake Error|Could NOT find|ERROR|error:' probe-g2o/configure.log || true
             tail -n 55 probe-g2o/configure.log
           else
-            echo 'Configure passed; compiling actual g2o core and stuff (without LGPL solver)' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Configure passed; compiling actual g2o core, SBA, Sim3, dense/eigen solvers (without LGPL csparse solver)' >> "$GITHUB_STEP_SUMMARY"
             set +e
-            timeout 360s emmake cmake --build /tmp/pai-g2o-wasm --target core stuff -j2 \
+            timeout 360s emmake cmake --build /tmp/pai-g2o-wasm --target core stuff types_sba types_sim3 solver_dense solver_eigen -j2 \
               > probe-g2o/build.log 2>&1
             built=$?
             set -e
             echo "$built" > probe-g2o/build-exit-code.txt
-            echo "g2o WASM core/stuff build code: $built" >> "$GITHUB_STEP_SUMMARY"
+            echo "g2o WASM core/SBA/Sim3/dense/eigen build code: $built" >> "$GITHUB_STEP_SUMMARY"
             grep -n -m 20 -E 'error:|fatal error:|undefined symbol|gmake:.*Error' probe-g2o/build.log || true
             tail -n 40 probe-g2o/build.log
           fi
