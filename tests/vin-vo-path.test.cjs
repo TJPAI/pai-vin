@@ -25,9 +25,17 @@ const realisticPose={estimate(){return {ok:true,inliers:34,ratio:.85,cheirality:
 const moving=V.parseStep(stationaryPoints,shifted,geom,realisticPose,{frameChange:{ok:true}});
 assert.equal(moving.ok,true,JSON.stringify(moving));
 assert.ok(moving.parallaxPx>2.2);
-const rotateOnly=stationaryPoints.map(v=>({...v,x:v.x+5,y:v.y+3}));
-const rotationRejected=V.parseStep(stationaryPoints,rotateOnly,geom,realisticPose,{frameChange:{ok:true}});
-assert.equal(rotationRejected.reason,'pure_rotation_or_no_parallax');
+// A genuine camera yaw projection can change many pixels without movement.
+const theta=.055,c=Math.cos(theta),si=Math.sin(theta);
+const Ry=[[c,0,si],[0,1,0],[-si,0,c]];
+const rotateOnly=stationaryPoints.map(v=>{
+ const x=(v.x-128)/220,y=(v.y-96)/220;
+ const xx=c*x+si,zz=-si*x+c;
+ return {...v,x:128+220*xx/zz,y:96+220*y/zz};
+});
+const yawPose={estimate(){return {ok:true,inliers:36,ratio:.9,cheirality:30,R:Ry,t:[1,0,0],matches:40}}};
+const rotationRejected=V.parseStep(stationaryPoints,rotateOnly,geom,yawPose,{frameChange:{ok:true}});
+assert.equal(rotationRejected.reason,'pure_rotation_or_no_parallax',JSON.stringify(rotationRejected));
 assert.equal(s.append({ok:true,dx:1,dz:0,yaw:0}),true);
 assert.equal(s.append({ok:true,dx:0,dz:1,yaw:0}),true);
 assert.equal(s.nodes.length,3);
