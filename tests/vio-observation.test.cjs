@@ -31,4 +31,16 @@ const rejectedLegacy=O.assess({tracks:{matches:[]},previousTime:200,currentTime:
  sensorBuffer:fakeBuf,rotationEstimator:V,
  visualOverride:{ok:false,reason:'insufficient_tracks',count:7}});
 assert.equal(rejectedLegacy.visualMatchCount,7);
+const coherent=O.flowStatistics(Array.from({length:32},(_,i)=>({px:16+(i%8)*24,py:20+Math.floor(i/8)*40,x:22+(i%8)*24,y:24+Math.floor(i/8)*40})));
+assert.equal(coherent.count,32);assert.equal(coherent.translationLike,true);assert.equal(coherent.parallaxConfirmed,false);
+assert.equal(coherent.metricTranslation,null);
+const scattered=O.flowStatistics(Array.from({length:32},(_,i)=>({px:16+(i%8)*24,py:20+Math.floor(i/8)*40,
+ x:16+(i%8)*24+(i%2?14:-14),y:20+Math.floor(i/8)*40+(i%3?8:-8)})));
+assert.equal(scattered.spatiallyVariable,true);
+const poor=O.flowStatistics([{px:1,py:2,x:2,y:3}]);
+assert.equal(poor.translationLike,false);
+assert.equal(O.flowStatistics([]).count,0);
+const classified=V.estimate(samples.slice(0,24).map((p,i)=>i<16?{...p,x:p.x+60,y:p.y-50}:p),K);
+assert.equal(classified.ok,false);
+assert.ok(['rotation_geometry_unreliable','insufficient_tracks'].includes(classified.reason));
 console.log('VIO image-track/IMU observation diagnostic tests PASS');
