@@ -31,6 +31,8 @@ jobs:
           node tests/web-vio-features.test.cjs
           node --check web-vio-pose.js
           node tests/web-vio-pose.test.cjs
+          node --check web-vio-inertial.js
+          node tests/web-vio-inertial.test.cjs
           node tests/web-vio-geometry.test.cjs
           test -s web-vio-demo.html
           grep -q 'web-vio-demo.html' index.html
