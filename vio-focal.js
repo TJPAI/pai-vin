@@ -95,6 +95,68 @@ function quality(views,width,height,estimateResult){
   crossSessionRepeatabilityVerified:false,
   certifiedIntrinsics:false};
 }
+// Lightweight single-k1 *candidate comparison*, NOT a certified camera model.
+// Four markers per image provide no independent corner holdout; use withheld
+// VIEW orthogonality constraints, with an explicit 10% improvement gate.
+function undistort(view,width,height,k1){
+ const cx=width/2,cy=height/2,radius=Math.max(width,height)/2;
+ return view.map(([x,y])=>{
+  const ox=(x-cx)/radius,oy=(y-cy)/radius;
+  let u=ox,v=oy;
+  for(let i=0;i<8;i++){const d=1+k1*(u*u+v*v);if(d<.55)return [NaN,NaN];u=ox/d;v=oy/d}
+  return [cx+u*radius,cy+v*radius];
+ });
+}
+function solveFocalRows(candidates,excluded=-1){
+ const rows=candidates.flatMap((c,i)=>i===excluded?[]:(c?.rows||[]));
+ if(rows.length<8)return null;
+ const denom=rows.reduce((s,r)=>s+r.x*r.x,0);
+ if(denom<1e-16)return null;
+ const f2=rows.reduce((s,r)=>s+r.x*r.y,0)/denom;
+ return f2>0&&Number.isFinite(f2)?Math.sqrt(f2):null;
+}
+function distortionTrial(views,width,height,k1){
+ const corrected=views.map(v=>undistort(v,width,height,k1));
+ const cs=corrected.map(v=>candidate(v,width,height));
+ if(cs.some(c=>!c||c.rows.length!==2))return null;
+ const focal=solveFocalRows(cs);
+ if(!focal||focal<.35*Math.max(width,height)||focal>5*Math.max(width,height))return null;
+ // Predict constraints of withheld views, never fit those constraints.
+ const perView=[];
+ for(let i=0;i<cs.length;i++){
+  const fi=solveFocalRows(cs,i);
+  if(!fi||fi<.35*Math.max(width,height)||fi>5*Math.max(width,height))return null;
+  const f2=fi*fi;
+  const err=Math.sqrt(cs[i].rows.reduce((s,r)=>s+(r.x*f2-r.y)**2,0)/cs[i].rows.length);
+  perView.push(err);
+ }
+ const heldOutRms=Math.sqrt(perView.reduce((s,v)=>s+v*v,0)/perView.length);
+ return {k1,focal,heldOutConstraintRms:heldOutRms,perViewHeldOutRms:perView};
+}
+function distortionDiagnostic(views,width,height){
+ if(!Array.isArray(views)||views.length<5)return {status:'unavailable',reason:'need_five_views'};
+ const ks=Array.from({length:21},(_,i)=>(i-10)*.025);
+ const trials=ks.map(k=>distortionTrial(views,width,height,k)).filter(Boolean);
+ const zero=trials.find(x=>Math.abs(x.k1)<1e-12);
+ if(!zero)return {status:'unavailable',reason:'baseline_invalid'};
+ // Weak complexity penalty discourages spurious k1 on a small four-marker board.
+ const cost=x=>x.heldOutConstraintRms*(1+.025*Math.abs(x.k1)/.25);
+ const best=trials.reduce((a,b)=>cost(b)<cost(a)?b:a,zero);
+ const improvement=(zero.heldOutConstraintRms-best.heldOutConstraintRms)/zero.heldOutConstraintRms;
+ const edge=Math.abs(best.k1)>=.249;
+ const eligible=improvement>=.1&&!edge;
+ return {status:eligible?'cross_view_candidate_improved':'insufficient_independent_evidence',
+  baselineHeldOutConstraintRms:zero.heldOutConstraintRms,
+  candidateHeldOutConstraintRms:best.heldOutConstraintRms,
+  relativeImprovement:improvement,
+  candidateK1:best.k1,candidateFocalPx:best.focal,
+  evaluatedModels:trials.length,oneParameterRadialOnly:true,
+  radiusNormalization:'half_max_dimension',
+  validation:'leave_one_view_out_orthogonality_constraints_not_held_out_corners',
+  independentPixelReprojectionValidated:false,
+  distortionCalibrated:false,eligibleForVio:false,
+  caution:edge?'optimum_on_search_boundary':null};
+}
 function estimate(views,width,height){
  if(!Number.isInteger(width)||!Number.isInteger(height)||width<100||height<100)
   return {ok:false,reason:'invalid_resolution'};
@@ -133,10 +195,11 @@ function estimate(views,width,height){
  const reprojectionRmsPx=Math.sqrt(perViewReprojectionRmsPx.reduce((sum,x)=>sum+x*x,0)/good.length);
  const maxViewReprojectionRmsPx=Math.max(...perViewReprojectionRmsPx);
  if(residual>.025||stability>.15||reprojectionRmsPx>2||maxViewReprojectionRmsPx>3)return {ok:false,reason:'multi_view_inconsistent',residual,leaveOneOutRelativeSpread:stability,reprojectionRmsPx,maxViewReprojectionRmsPx};
+ const radial=distortionDiagnostic(views,width,height);
  const qualitySummary=quality(views,width,height,{ok:true,leaveOneOutRelativeSpread:stability,
   reprojectionRmsPx,perViewReprojectionRmsPx});
  return {ok:true,fx:f,fy:f,cx:width/2,cy:height/2,width,height,views:good.length,
-  quality:qualitySummary,
+  quality:qualitySummary,radialDistortionCandidate:radial,
   constraintRms:residual,leaveOneOutRelativeSpread:stability,
   reprojectionRmsPx,maxViewReprojectionRmsPx,perViewReprojectionRmsPx,
   reprojectionMeasurement:'same_four_markers_constrained_model_fit_not_independent',
@@ -144,5 +207,5 @@ function estimate(views,width,height){
   verified:false,distortionCalibrated:false,metricPoseAvailable:false,
   source:'multi_view_a4_constrained_candidate_only'};
 }
-return {estimate,homography,candidate,constrainedReprojection,quality};
+return {estimate,homography,candidate,constrainedReprojection,quality,distortionDiagnostic,undistort};
 });

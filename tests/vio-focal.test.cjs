@@ -37,6 +37,18 @@ assert.equal(modelOnly.guidance,'improve_intrinsic_distortion_model');
 assert.equal(modelOnly.crossSessionRepeatabilityVerified,false);
 const unstable=F.quality(views,W,H,{...k,leaveOneOutRelativeSpread:.03,reprojectionRmsPx:.5});
 assert.equal(unstable.needsAdditionalViews,true);
+assert.ok(k.radialDistortionCandidate,'distortion diagnostic exists');
+assert.equal(k.radialDistortionCandidate.distortionCalibrated,false);
+assert.equal(k.radialDistortionCandidate.eligibleForVio,false);
+assert.ok(Math.abs(k.radialDistortionCandidate.candidateK1)<.1,'ideal pinhole should prefer k1 near 0');
+const withRadial=views.map(v=>v.map(([x,y])=>{
+ const dx=(x-W/2)/(Math.max(W,H)/2),dy=(y-H/2)/(Math.max(W,H)/2);
+ const s=1-.16*(dx*dx+dy*dy);return [W/2+(x-W/2)*s,H/2+(y-H/2)*s];
+}));
+const radial=F.distortionDiagnostic(withRadial,W,H);
+assert.ok(radial.evaluatedModels>=10,JSON.stringify(radial));
+assert.equal(radial.eligibleForVio,false);
+assert.equal(radial.independentPixelReprojectionValidated,false);
 assert.equal(k.verified,false);assert.equal(k.distortionCalibrated,false);assert.equal(k.metricPoseAvailable,false);
 assert.equal(F.estimate(views.slice(0,1),W,H).reason,'need_five_views');
 assert.equal(F.estimate(views,0,H).reason,'invalid_resolution');

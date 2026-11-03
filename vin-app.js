@@ -104,9 +104,14 @@ $('boardSnap').onclick=()=>{
     leave_one_out_focal_variation_gt_1pct:'留一法焦距波动超过1%',
     in_sample_reprojection_gt_1px:'模型内RMS超过1px',
     individual_view_fit_gt_1_8px:'有单视角拟合超过1.8px'};
+   const radial=estimate.radialDistortionCandidate;
+   const radialInfo=radial?.status==='cross_view_candidate_improved'?
+    ' · 径向k1候选 '+radial.candidateK1.toFixed(3)+
+    '，留一视角几何约束改善 '+(100*radial.relativeImprovement).toFixed(1)+'%（仍未验证）':
+    ' · 径向畸变候选尚无可靠的≥10%跨视角改善证据';
    focalSay('标定画布640×480；候选焦距 fx='+estimate.fx.toFixed(1)+'px · 质量提示：'+label+
     (q?.reasons?.length?'（'+q.reasons.map(x=>reasons[x]||x).join('、')+'）':'')+
-    ' · 模型内重投影 RMS '+estimate.reprojectionRmsPx.toFixed(2)+'px · 逐视角最大 '+estimate.maxViewReprojectionRmsPx.toFixed(2)+'px · 留一法波动 '+(100*estimate.leaveOneOutRelativeSpread).toFixed(1)+'%。此误差仅是同一组四角的模型拟合，不是独立验证，尚未标定畸变、外参与时间偏移。');
+    ' · 模型内重投影 RMS '+estimate.reprojectionRmsPx.toFixed(2)+'px · 逐视角最大 '+estimate.maxViewReprojectionRmsPx.toFixed(2)+'px · 留一法波动 '+(100*estimate.leaveOneOutRelativeSpread).toFixed(1)+'%'+radialInfo+'。当前畸变仅诊断未用于VIO；四角约束并非独立像素重投影验证，仍需完整内参与外参标定。');
    say('A4平面参照已保存；多视角焦距候选已产生。'+
     (q?.status==='review_capture'?'留一法焦距变化偏大，请补充不同倾斜方向的视角。':
      q?.status==='model_limited'?'留一法焦距较稳定，当前主要是针孔模型拟合误差，继续增加照片未必改善；不需要反复拍摄。':
