@@ -37,5 +37,13 @@ assert.throws(()=>tracker.update(new Uint8Array(10),900),/invalid grayscale/);
 const flat=new Uint8Array(W*H).fill(127),t2=new V.Tracker();
 assert.equal(t2.update(flat,100).total,0);
 assert.equal(t2.update(flat,200).total,0);
+// Larger movement must be handled by the quarter-resolution search,
+ // without fabricating 2D/3D spatial position.
+const wide=new V.Tracker({maxTracks:80});
+const base=wide.update(image,100);
+const moved=wide.update(shift(image,14,6),300);
+assert.ok(moved.retained>=8,JSON.stringify({base:base.total,retained:moved.retained}));
+const correct=moved.matches.filter(p=>Math.abs(p.dx-14)<=1&&Math.abs(p.dy-6)<=1);
+assert.ok(correct.length>=Math.max(5,moved.matches.length*.45),JSON.stringify({matches:moved.matches.length,correct:correct.length}));
 tracker.reset();assert.equal(tracker.tracks.length,0);
 console.log('VIO persistent feature tracking tests PASS');
