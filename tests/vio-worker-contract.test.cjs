@@ -30,6 +30,8 @@ assert.ok(two.vo&&two.vo.rotationOnly===true);
 assert.equal(two.vo.metricPositionAvailable,false);
 assert.equal(two.vo.visualInertialFused,false);
 assert.ok(two.keyframe&&two.keyframe.metricPoseAvailable===false);
+assert.equal(two.keyframe.repair.metricPoseAvailable,false);
+assert.ok(Number.isInteger(two.keyframe.repairTotals.attached));
 assert.equal(two.keyframe.summary.observationsOnly,true);
 assert.ok(Number.isFinite(two.processingMs));
 assert.ok(two.stageTiming&&['trackingMs','rotationMs','geometryMs'].every(x=>Number.isFinite(two.stageTiming[x])),'worker must report stage timings');

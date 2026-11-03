@@ -3,22 +3,29 @@
  * rotation. The main thread only samples pixels and receives IMU events.
  * All frames must arrive sequentially; the producer bounds in-flight work.
  * Browser reception time is NOT the exposure timestamp. */
-importScripts('./vio-tracker.js','./vio-keyframes.js','./vio-rotation.js','./vio-geometry.js','./vio-vo-state.js','./vio-observation.js');
+importScripts('./vio-tracker.js','./vio-keyframes.js','./vio-track-repair.js','./vio-rotation.js','./vio-geometry.js','./vio-vo-state.js','./vio-observation.js');
 let tracker=new PAIVioTracks.Tracker({maxTracks:90});
 let keyframes=new PAIVioKeyframes.KeyframeBank({maxFrames:3,interval:12,maxTrials:12});
 let voState=new PAIVioVOState.State();
 let lastT=null;
+let repairTotals={attempts:0,validated:0,attached:0,rejected:0};
 self.onmessage=(e)=>{
  const m=e.data;
  if(m?.type==='reset'){
-  tracker.reset();keyframes.reset();voState.reset();lastT=null;postMessage({type:'reset-ack',session:m.session});return;
+  tracker.reset();keyframes.reset();voState.reset();lastT=null;
+  repairTotals={attempts:0,validated:0,attached:0,rejected:0};postMessage({type:'reset-ack',session:m.session});return;
  }
  if(m?.type!=='frame')return;
  try{
   const begun=performance.now();
   const gray=new Uint8Array(m.buffer);
+  const previousGray=tracker.frame;
+  const previousTracks=tracker.tracks.map(x=>({...x}));
   const current=tracker.update(gray,m.t);
   const kf=keyframes.update(gray,tracker.tracks,current.frame,m.t);
+  const repair=PAIVioRepair.repair({previousGray,previousTracks,currentGray:gray,
+   tracker,report:current,observations:kf.observations});
+  for(const k of Object.keys(repairTotals))repairTotals[k]+=repair[k]||0;
   const trackingMs=performance.now()-begun;
   let vision=null,flow=null,epipolar=null,rotationMs=0,geometryMs=0;
   let candidateAB=null,abCostMs=0;
@@ -58,10 +65,11 @@ self.onmessage=(e)=>{
   const start=lastT;lastT=m.t;
   postMessage({type:'result',session:m.session,seq:m.seq,start,end:m.t,
    processingMs:performance.now()-begun,
-   stageTiming:{trackingMs,rotationMs,geometryMs,abCostMs},candidateAB,vo,keyframe:{...kf,summary:keyframes.snapshot()},
+   stageTiming:{trackingMs,rotationMs,geometryMs,abCostMs},candidateAB,vo,keyframe:{...kf,repair,repairTotals:{...repairTotals},summary:keyframes.snapshot()},
    tracks:{total:current.total,initial:current.initial,retained:current.retained,added:current.added,retention:current.retention,longLived:current.longLived,
     lost:current.lost,avgAge:current.avgAge,medianError:current.medianError,
     recoveryAttempts:current.recoveryAttempts,recovered:current.recovered,recoveryPrior:current.recoveryPrior,
+    keyframeReattached:repair.attached,
     matchCount:current.matches.length},trackPoints,vision,flow,epipolar});
  }catch(error){
   postMessage({type:'error',session:m.session,seq:m.seq,message:String(error?.message||error)});

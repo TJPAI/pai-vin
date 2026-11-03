@@ -119,7 +119,7 @@
     candidateABEpipolar.candidate+'/'+candidateABChecked+'。仅独立诊断，未改变实时观测与融合。':
    '候选内参 A/B 尚无有效同帧样本；需本次摄像头会话完成多视角 A4 候选。';
   const keyEl=$('vioKeyframeStatus');
-  if(keyEl)keyEl.textContent=lastKeyframe?'关键帧 '+lastKeyframe.keyframeCount+' · 历史二维重匹配 '+lastKeyframe.summary.verified2D+'/'+lastKeyframe.summary.attempts+' · 未建立3D地图':'等待关键帧二维观测';
+  if(keyEl)keyEl.textContent=lastKeyframe?'关键帧 '+lastKeyframe.keyframeCount+' · 历史二维重匹配 '+lastKeyframe.summary.verified2D+'/'+lastKeyframe.summary.attempts+' · 已回接历史ID '+(lastKeyframe.repairTotals?.attached||0)+'（同一相邻帧双重验证） · 未建立3D地图':'等待关键帧二维观测';
   const voEl=$('vioVOStatus');
   if(voEl)voEl.textContent=voLast?'视觉VO：第'+voLast.segment+'段、连续'+voLast.segmentFrames+
    '个旋转观测；累计成功'+voLast.acceptedSteps+' / 中断'+voLast.rejectedSteps+
@@ -164,6 +164,7 @@
    tracks:m.tracks.total,retained:m.tracks.retained,added:m.tracks.added,
    lost:m.tracks.lost,retention:m.tracks.retention,longLived:m.tracks.longLived,
    recoveryAttempts:m.tracks.recoveryAttempts,recovered:m.tracks.recovered,recoveryPrior:m.tracks.recoveryPrior,
+   keyframeReattached:m.tracks.keyframeReattached||0,
    visualMatches:m.tracks.matchCount,medianPatchError:m.tracks.medianError,
    workerProcessingMs:m.processingMs,
    stageTiming:m.stageTiming||null});

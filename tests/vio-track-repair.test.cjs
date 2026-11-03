@@ -1,0 +1,26 @@
+const assert=require('node:assert/strict'),T=require('../vio-tracker.js'),K=require('../vio-keyframes.js'),P=require('../vio-track-repair.js');
+const W=256,H=192;let seed=141;const a=new Uint8Array(W*H);
+for(let i=0;i<a.length;i++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;a[i]=seed>>>24;}
+const shift=(src,dx,dy)=>{const out=new Uint8Array(src.length);
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const u=x-dx,v=y-dy;out[y*W+x]=u>=0&&v>=0&&u<W&&v<H?src[v*W+u]:0;}return out;};
+const tr=new T.Tracker({maxTracks:90});
+tr.update(a,100);tr.update(shift(a,1,1),200);tr.update(shift(a,2,2),300);
+const previous=shift(a,2,2),now=shift(a,4,3);
+const previousTracks=tr.tracks.map(p=>({...p}));
+const current=tr.update(now,400);
+const can=previousTracks.filter(p=>p.age>=3).slice(0,6);
+assert.ok(can.length>=2);
+tr.tracks=tr.tracks.filter(p=>!can.some(c=>c.id===p.id));
+current.matches=current.matches.filter(p=>!can.some(c=>c.id===p.id));
+current.retained-=can.length;current.lost+=can.length;
+const observations=can.map(p=>({trackId:p.id,x:p.x+2,y:p.y+1,fbError:0}));
+const before=current.retained;
+const out=P.repair({previousGray:previous,previousTracks,currentGray:now,tracker:tr,report:current,observations});
+assert.ok(out.attached>=2,JSON.stringify(out));
+assert.ok(current.retained>before,JSON.stringify(current));
+for(const p of current.matches.filter(p=>can.some(c=>c.id===p.id)))assert.ok(p.age>=4);
+assert.equal(out.metricPoseAvailable,false);
+const none=P.repair({previousGray:previous,previousTracks,currentGray:new Uint8Array(W*H),tracker:tr,report:current,observations});
+assert.equal(none.attached,0);
+assert.equal(P.repair({previousGray:null}).attached,0);
+console.log('V3.29 keyframe-to-adjacent-frame reattachment guarded PASS');
