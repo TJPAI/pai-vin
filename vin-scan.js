@@ -49,7 +49,7 @@
   try{
    const pts=frame($('scanCamera'));
    if(!pts)return;
-   const r=graph.add(pts,performance.now());
+   const r=graph.add(pts,Date.now());
    if(r.added){
     showGraph(graph.frames.length-1);
     await save();
@@ -65,6 +65,11 @@
  }
  async function startScan(){
   if(scanStream)return;
+  let board=null;
+  try{board=JSON.parse(localStorage.getItem('pai-vin-a4-plane-v1')||'null')}catch(e){}
+  if(board?.schema!=='pai-vin-a4-plane-v1'||board?.metricPlaneOnly!==true){
+   say('scanStatus','请先完成上方 A4 四角平面标定并保存，再进行环境扫描。');return;
+  }
   stopRecognize();
   try{
    scanStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480}}});
