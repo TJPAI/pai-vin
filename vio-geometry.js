@@ -47,15 +47,14 @@ function estimate(matches,intr,opts={}){
   .map(p=>({x:(p.px-intr.cx)/intr.fx,y:(p.py-intr.cy)/intr.fy,u:(p.x-intr.cx)/intr.fx,v:(p.y-intr.cy)/intr.fy,px:p.px,py:p.py,dx:p.x-p.px,dy:p.y-p.py}));
  const total=pairs.length;
  if(total<Math.max(8,min))return {ok:false,reason:'insufficient_tracks',total,inliers:0};
- const threshold=opts.threshold??.005,attempts=opts.attempts??75;
+ // Cap CPU work on iPhone: the previous 75 full Jacobi fits per frame\n // drove Worker latency above the capture interval. This remains a diagnostic.\n const threshold=opts.threshold??.005,attempts=opts.attempts??28;
  let best=[],bestF=null,state=123456789;
  for(let k=0;k<attempts;k++){
   const selected=[],used=new Set();
   while(selected.length<8){state=(Math.imul(state,1664525)+1013904223)>>>0;const i=state%total;if(!used.has(i)){used.add(i);selected.push(pairs[i])}}
   const f=fit(selected);if(!f)continue;
   const inliers=pairs.filter(p=>error(f,p)<threshold);
-  if(inliers.length>best.length){best=inliers;bestF=f}
- }
+  if(inliers.length>best.length){best=inliers;bestF=f}\n  // Strong consensus rarely benefits from dozens more eigensolves.\n  if(k>=9&&best.length>=min&&best.length/total>=.92)break;\n }
  if(best.length<min)return {ok:false,reason:'epipolar_geometry_unreliable',total,inliers:best.length,ratio:best.length/total};
  const f=fit(best)||bestF;
  const inliers=pairs.filter(p=>error(f,p)<threshold),ratio=inliers.length/total;
