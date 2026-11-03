@@ -58,6 +58,33 @@ jobs:
           fi
           echo "Upstream SHA e445b5452535e781fdf6777ec33a06f5f8f5e416" >> "$GITHUB_STEP_SUMMARY"
           echo 'Toolchain smoke compiled and executed successfully; this does not verify stella itself.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Second configure probe - relax OpenMP only in temporary upstream clone
+        shell: bash
+        run: |
+          set -uo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/stella-vslam/CMakeLists.txt')
+          s=p.read_text()
+          old='find_package(OpenMP REQUIRED)'
+          assert s.count(old)==1
+          p.write_text(s.replace(old,'find_package(OpenMP QUIET)'))
+          print('Changed ONLY the OpenMP REQUIRED check to QUIET in /tmp clone')
+          PY
+          set +e
+          timeout 120s emcmake cmake -S /tmp/stella-vslam -B /tmp/stella-vslam/build-wasm-nonopenmp \
+            -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DUSE_ARUCO=OFF -DUSE_CCACHE=OFF \
+            -DCMAKE_BUILD_TYPE=Release > probe-results/stella-relaxed-openmp-configure.log 2>&1
+          code=$?
+          set -e
+          printf '%s\n' "$code" > probe-results/relaxed-openmp-exit-code.txt
+          echo "Relaxed OpenMP (temporary CI source): CMake configure exit $code" >> "$GITHUB_STEP_SUMMARY"
+          tail -n 65 probe-results/stella-relaxed-openmp-configure.log
+          if [ "$code" -eq 0 ]; then
+            echo 'CMake configure passed, but compile/link and Safari runtime untested.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Subsequent dependency blocker found; see artifact log.' >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Save configure evidence (including blockers)
         uses: actions/upload-artifact@v4
         with:
