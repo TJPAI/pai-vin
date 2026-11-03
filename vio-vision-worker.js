@@ -13,6 +13,7 @@ self.onmessage=(e)=>{
  }
  if(m?.type!=='frame')return;
  try{
+  const begun=performance.now();
   const gray=new Uint8Array(m.buffer);
   const current=tracker.update(gray,m.t);
   let vision=null;
@@ -23,6 +24,7 @@ self.onmessage=(e)=>{
   const trackPoints=tracker.tracks.map(({x,y,age})=>({x,y,age}));
   const start=lastT;lastT=m.t;
   postMessage({type:'result',session:m.session,seq:m.seq,start,end:m.t,
+   processingMs:performance.now()-begun,
    tracks:{total:current.total,retained:current.retained,longLived:current.longLived,
     lost:current.lost,avgAge:current.avgAge,medianError:current.medianError,
     matchCount:current.matches.length},trackPoints,vision});
