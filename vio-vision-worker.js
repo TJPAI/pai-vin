@@ -20,7 +20,9 @@ self.onmessage=(e)=>{
   if(lastT!==null){
    const matches=PAIVioObserve.tracksToPairs(current);
    flow=PAIVioObserve.flowStatistics(matches);
-   const intr=PAIVioObserve.nominalIntrinsics(256,192);\n   vision=PAIVioRotation.estimate(matches,intr);\n   epipolar=PAIVioGeometry.estimate(matches,intr);
+   const intr=PAIVioObserve.nominalIntrinsics(256,192); 
+   vision=PAIVioRotation.estimate(matches,intr); 
+   epipolar=PAIVioGeometry.estimate(matches,intr);
   }
   const trackPoints=tracker.tracks.map(({x,y,age})=>({x,y,age}));
   const start=lastT;lastT=m.t;
