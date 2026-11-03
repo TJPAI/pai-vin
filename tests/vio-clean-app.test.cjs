@@ -10,7 +10,7 @@ assert.ok(fs.readFileSync('vio-sensor-probe.js','utf8').includes("new Worker('./
 const legacy=['vin-scan.js','vin-vo-path.js','vin-landmark-graph.js','web-vio-demo.js','web-vio-demo.html','web-vio-pose.js','web-vio-inertial.js','web-vio-geometry.js','web-metric-map.js','slam-capture.js','visualGraph','voCanvas','scanStart','scanStop','mapFile','startCamera','legacy VO'];
 for(const name of legacy){assert.ok(!page.includes(name),'legacy in UI: '+name);assert.ok(!sw.includes(name),'legacy cached: '+name)}
 assert.equal(manifest.start_url,'./vin-app.html');
-assert.ok(page.includes('V3.8 Alpha'));
+assert.ok(page.includes('V3.9 Alpha'));
 assert.ok(!page.includes('boardReset')&&!page.includes('boardSave'),'manual controls must be absent');
 assert.ok(home.includes('vin-app.html'));
-console.log('Clean V3.8 product/manifest/offline asset tests PASS');
+console.log('Clean V3.9 product/manifest/offline asset tests PASS');
