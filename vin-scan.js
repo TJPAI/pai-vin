@@ -8,7 +8,7 @@
  const context=canvas.getContext('2d',{willReadFrequently:true});
  let graph=new VINLandmarks.Graph(),sketch=new VINPath.Sketch(),scanStream=null,scanTimer=null,voTimer=null,recTimer=null,db=null;
  let scanBusy=false,voBusy=false,recBusy=false,lastPlace=-1,confirmed=0,recognitions=[];
- let prevMotionFrame=null;let pendingDirections=[];let voChecks=0;const voReasons={};
+ let prevMotionFrame=null;let motionAnchor=null;let anchorAge=0;let voChecks=0,voAccepted=0,voRejected=0;const voReasons={};
  const say=(id,t)=>{if($(id))$(id).textContent=t};
  const buttons=()=>{if($('scanStart'))$('scanStart').disabled=!!scanStream;
   if($('scanStop'))$('scanStop').disabled=!scanStream};
@@ -46,7 +46,7 @@
   VINLandmarks.render($('visualGraph'),graph,active);
   VINPath.render($('voCanvas'),sketch);
   const top=Object.entries(voReasons).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([k,v])=>k+': '+v).join('；');
-  say('voScanStatus','连续视觉检查 '+voChecks+' 次；可信运动段 '+(sketch.nodes.length-1)+'，未通过 '+sketch.rejected+'。'+(top?' 主要原因：'+top:'')+'。非米制轨迹。');
+  say('voScanStatus','本次扫描检查 '+voChecks+' 次，可信运动段 '+voAccepted+'，等待/拒绝 '+voRejected+'。'+(top?' 主要原因：'+top:'')+'。非米制轨迹。');
   if($('recognitionQuality')&&graph.frames.length===0)say('recognitionQuality','没有保存的视觉关键帧');
  }
  // High-rate tracking uses consecutive camera samples, not sparse keyframes.
@@ -56,37 +56,37 @@
   try{
    const now=frameImage($('scanCamera'));
    if(!now)return;
+   if(!motionAnchor)motionAnchor=now;
    if(prevMotionFrame){
     voChecks++;
-    const photo=VINPath.frameChange(prevMotionFrame.gray,now.gray);
-    const step=VINPath.parseStep(prevMotionFrame.points,now.points,VINGeometry,VINVO,{frameChange:photo});
-    if(step.ok){
-     // Require three consecutive, similarly directed estimates before a path
-     // update. Sporadic photometric changes and bad two-view solutions freeze it.
-     const dir=Math.atan2(step.dz,step.dx);
-     const prev=pendingDirections[pendingDirections.length-1];
-     const angular=(a,b)=>Math.abs(Math.atan2(Math.sin(a-b),Math.cos(a-b)));
-     if(prev&&angular(dir,prev.dir)>.45)pendingDirections=[];
-     pendingDirections.push({dir,step});
-     if(pendingDirections.length>=3){
-      const anchor=pendingDirections[0].dir;
-      if(pendingDirections.every(d=>angular(d.dir,anchor)<.45)){
-       // Only newest genuine observation counts as one arbitrary step.
-       sketch.append(step);
-      }
-      pendingDirections=pendingDirections.slice(-2);
+    // Stationarity is judged from adjacent camera frames, independently of
+    // the wider-baseline pose reference. Stillness MUST NOT generate motion.
+    const adjacent=VINPath.frameChange(prevMotionFrame.gray,now.gray);
+    let reason=null;
+    if(!adjacent.ok){reason=adjacent.reason;motionAnchor=now;anchorAge=0}
+    else{
+     anchorAge++;
+     const wide=VINPath.frameChange(motionAnchor.gray,now.gray);
+     const step=VINPath.parseStep(motionAnchor.points,now.points,VINGeometry,VINVO,{frameChange:wide});
+     if(step.ok){
+      // Each accepted segment is a verified two-view estimate. No
+      // three-in-a-row same-direction requirement (turns are allowed).
+      if(sketch.append(step)){voAccepted++;motionAnchor=now;anchorAge=0}
+      else reason='sketch_limit';
+     }else{
+      reason=step.reason||'unknown';
+      // Preserve the reference briefly to collect parallax; discard it after
+      // ~3.6s so stale unrelated scenes cannot generate false displacement.
+      if(anchorAge>=8){motionAnchor=now;anchorAge=0}
      }
-    }else{
-     pendingDirections=[];
-     sketch.rejected++;
-     const key=step.reason||'unknown';voReasons[key]=(voReasons[key]||0)+1;
     }
+    if(reason){voRejected++;voReasons[reason]=(voReasons[reason]||0)+1}
     VINPath.render($('voCanvas'),sketch);
     const top=Object.entries(voReasons).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>k+': '+v).join('；');
-    say('voScanStatus','连续视觉检查 '+voChecks+' 次；通过且连续的运动段 '+(sketch.nodes.length-1)+'，冻结/拒绝 '+sketch.rejected+'。'+(top?'原因：'+top:'')+'。静止时应保持不变；非米制轨迹。');
+    say('voScanStatus','本次扫描检查 '+voChecks+' 次；可信运动段 '+voAccepted+'；静止/等待/拒绝 '+voRejected+'。'+(top?'原因：'+top:'')+'。非米制轨迹。');
    }
    prevMotionFrame=now;
-  }catch(e){pendingDirections=[];say('voScanStatus','视觉运动检测异常：'+e.message)}
+  }catch(e){motionAnchor=null;anchorAge=0;say('voScanStatus','视觉运动检测异常：'+e.message)}
   finally{voBusy=false}
  }
  async function scanTick(){
@@ -121,7 +121,7 @@
    scanStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480}}});
    $('scanCamera').srcObject=scanStream;await $('scanCamera').play();
    buttons();say('scanStatus','摄像头已启动。扫描区域并回到起点，特征仅保存在本机。');
-   prevMotionFrame=null;pendingDirections=[];voChecks=0;Object.keys(voReasons).forEach(k=>delete voReasons[k]);
+   prevMotionFrame=null;motionAnchor=null;anchorAge=0;voChecks=0;voAccepted=0;voRejected=0;sketch=new VINPath.Sketch();Object.keys(voReasons).forEach(k=>delete voReasons[k]);
    scanTick();scanTimer=setInterval(scanTick,1400);
    voTimer=setInterval(voTick,450);
   }catch(e){
@@ -130,7 +130,7 @@
   }
  }
  async function stopScan(){
-  clearInterval(scanTimer);scanTimer=null;clearInterval(voTimer);voTimer=null;prevMotionFrame=null;pendingDirections=[];
+  clearInterval(scanTimer);scanTimer=null;clearInterval(voTimer);voTimer=null;prevMotionFrame=null;motionAnchor=null;anchorAge=0;
   if(scanStream)scanStream.getTracks().forEach(t=>t.stop());
   scanStream=null;$('scanCamera').srcObject=null;buttons();
   try{if(db)await save()}catch(e){say('scanStatus','保存失败：'+e.message);return}
@@ -139,7 +139,7 @@
  async function clear(){
   if(scanStream)return say('scanStatus','请先停止扫描');
   if(!confirm('确定清空已保存的视觉关键帧地图？'))return;
-  graph=new VINLandmarks.Graph();sketch=new VINPath.Sketch();voChecks=0;Object.keys(voReasons).forEach(k=>delete voReasons[k]);recognitions=[];lastPlace=-1;confirmed=0;
+  graph=new VINLandmarks.Graph();sketch=new VINPath.Sketch();voChecks=0;voAccepted=0;voRejected=0;Object.keys(voReasons).forEach(k=>delete voReasons[k]);recognitions=[];lastPlace=-1;confirmed=0;
   try{await transact('delete','current');showGraph();say('scanStatus','视觉地图已清空。')}
   catch(e){say('scanStatus','清空失败：'+e.message)}
  }
