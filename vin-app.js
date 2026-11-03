@@ -38,30 +38,27 @@ $('boardSnap').onclick=()=>{
  const v=$('boardCamera');if(!boardStream||v.readyState<2)return;
  const w=snap.width,h=snap.height,dw=v.videoWidth,dh=v.videoHeight;
  if(!dw||!dh)return say('等待摄像头画面');
- const scale=Math.min(w/dw,h/dh),ww=dw*scale,hh=dh*scale;
+ const factor=Math.min(w/dw,h/dh),ww=dw*factor,hh=dh*factor;
  snapCtx.fillStyle='#07101d';snapCtx.fillRect(0,0,w,h);
  snapCtx.drawImage(v,(w-ww)/2,(h-hh)/2,ww,hh);
- snapshot=true;corners=[];result=null;$('boardSave').disabled=true;
- closeCamera();draw();say('点击四角标记中心：左上、右上、右下、左下');
-};
-canvas.addEventListener('click',e=>{
- if(!snapshot||corners.length>=4)return;
- const rect=canvas.getBoundingClientRect(),x=(e.clientX-rect.left)*canvas.width/rect.width,y=(e.clientY-rect.top)*canvas.height/rect.height;
- if(x<0||y<0||x>=canvas.width||y>=canvas.height)return;
- corners.push([x,y]);draw();
- if(corners.length===4){
-  result=VINBoard.calibrate(corners,canvas.width,canvas.height);
-  $('boardSave').disabled=!result.ok;
-  say(result.ok?'四角检测通过；可保存 A4 平面参照（不是 SLAM 标定）。':'四角检测失败：'+result.reason+'，请重新点选');
- }
-});
-$('boardReset').onclick=()=>{corners=[];result=null;$('boardSave').disabled=true;draw();say('请依次重新点选四角')};
-$('boardSave').onclick=()=>{
- if(!result?.ok)return;
+ snapshot=true;corners=[];result=null;
+ closeCamera();
  try{
-  localStorage.setItem('pai-vin-a4-plane-v1',JSON.stringify({...result,recordedAt:new Date().toISOString()}));
-  say('A4 平面参照已保存在此浏览器。尚待相机/IMU 及 SLAM 尺度标定');
- }catch(e){say('保存失败：'+e.message)}
+  const pixels=snapCtx.getImageData(0,0,w,h).data;
+  const detected=VINBoardDetect.detect(pixels,w,h);
+  if(!detected.ok){
+   draw();say('自动识别失败（'+detected.reason+'），请调整角度、距离或光线，再次拍摄。');
+   return;
+  }
+  const candidate=VINBoard.calibrate(detected.corners,w,h);
+  if(!candidate.ok){draw();say('标定几何校验未通过（'+candidate.reason+'），请重拍');return}
+  corners=detected.corners;result=candidate;draw();
+  localStorage.setItem('pai-vin-a4-plane-v1',JSON.stringify({
+   ...result,recordedAt:new Date().toISOString(),autoDetected:true,
+   detectedMarkerCount:4,detector:detected.method
+  }));
+  say('自动识别四角并保存 A4 平面参照成功；无需手动点选。此结果不是 SLAM 全局尺度标定。');
+ }catch(e){draw();say('自动标定未完成：'+e.message+'。请重新拍摄。')}
 };
 try{
  const saved=JSON.parse(localStorage.getItem('pai-vin-a4-plane-v1')||'null');
