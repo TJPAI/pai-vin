@@ -81,7 +81,7 @@ class Tracker{
  update(gray,t){
   if(!(gray instanceof Uint8Array)||gray.length!==this.w*this.h||!Number.isFinite(t))
    throw Error('invalid grayscale frame or timestamp');
-  if(this.last&&t<=this.last.t)throw Error('non-monotonic frame timestamp');
+  if(this.last&&t<=this.last.timestamp)throw Error('non-monotonic frame timestamp');
   const prev=this.frame,old=this.tracks,initial=old.length;
   let current=[],failed=0,errs=[];
   if(prev){
