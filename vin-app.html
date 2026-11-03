@@ -15,8 +15,21 @@ input{max-width:100%;width:100%;font-size:14px;color:#dceeff}code{font-size:12px
 [hidden]{display:none!important}
 </style></head><body><main>
 <h1>PAI-VIN <span class="muted small">V3.1 Alpha · 连续特征跟踪</span></h1>
-<p class="muted">首次建图一次 · 以后打开摄像头就能定位</p>
-<p><a href="#vioDev">直接进入 V3.0 视觉惯性传感器检测</a></p>
+<p class="muted">目标：A4 标定、手机 SLAM 建图、再次进入后实时定位。当前仅完成 VIO 采集及连续特征跟踪测试。</p>
+
+<div class="card" id="vioDev"><h2>V3.1 · VIO 连续视觉跟踪（M1）</h2>
+<p class="notice">旧版无尺度绿色轨迹已被判定为不可靠。新 VIO 引擎仍在开发；目前仅执行真实摄像头/IMU 时间同步和数据质量验证，不绘制虚假位置。</p>
+<video id="vioVideo" autoplay muted playsinline></video>
+<div class="grid"><button type="button" id="vioStart">启动 VIO 传感器检测</button><button type="button" id="vioStop" disabled class="alt">停止检测</button></div>
+<p class="small muted" id="vioStatus">未启动。此模块不需要先清除原有的视觉关键帧地图。</p>
+<p class="small muted" id="vioNumbers">等待传感器</p>
+<p class="small muted" id="vioTrackNumbers">等待连续视觉特征</p>
+<canvas id="vioTrackCanvas" width="256" height="192" aria-label="手机真实摄像头特征轨迹采样点；非空间定位地图"></canvas>
+<p class="small muted">绿点表示摄像头画面中的持续跟踪特征，圈越大表示跨多帧存活，不是建筑内的位置。当前无全局 6DoF 位姿或米制轨迹。</p>
+<button type="button" id="vioExport" class="alt" style="width:100%">导出 VIO 传感器诊断 JSON</button>
+<p class="small muted">此模块不导出视频和照片；诊断 JSON 最多包含最近 300 条 IMU 数值，用于分析数据采集稳定性。</p>
+</div>
+
 <div class="tabs"><button id="tabSetup" aria-selected="true" type="button">① 首次建图</button><button id="tabUse" aria-selected="false" class="alt" type="button">② 日常定位</button></div>
 <section id="setup">
  <div class="card"><h2>准备：A4 标定 + 手机扫描</h2>
@@ -59,18 +72,6 @@ input{max-width:100%;width:100%;font-size:14px;color:#dceeff}code{font-size:12px
  <p class="small muted">只有同一已校验建筑地图坐标系内的可信米制位姿才会画到地图上。当前版本没有接通浏览器本地米制 SLAM 引擎，因此暂不绘制虚构路线。</p>
  </div>
 </section>
-<div class="card" id="vioDev"><h2>V3.1 · VIO 连续视觉跟踪（M1）</h2>
-<p class="notice">旧版无尺度绿色轨迹已被判定为不可靠。新 VIO 引擎仍在开发；目前仅执行真实摄像头/IMU 时间同步和数据质量验证，不绘制虚假位置。</p>
-<video id="vioVideo" autoplay muted playsinline></video>
-<div class="grid"><button type="button" id="vioStart">启动 VIO 传感器检测</button><button type="button" id="vioStop" disabled class="alt">停止检测</button></div>
-<p class="small muted" id="vioStatus">未启动。此模块不需要先清除原有的视觉关键帧地图。</p>
-<p class="small muted" id="vioNumbers">等待传感器</p>
-<p class="small muted" id="vioTrackNumbers">等待连续视觉特征</p>
-<canvas id="vioTrackCanvas" width="256" height="192" aria-label="手机真实摄像头特征轨迹采样点；非空间定位地图"></canvas>
-<p class="small muted">绿点表示摄像头画面中的持续跟踪特征，圈越大表示跨多帧存活，不是建筑内的位置。当前无全局 6DoF 位姿或米制轨迹。</p>
-<button type="button" id="vioExport" class="alt" style="width:100%">导出 VIO 传感器诊断 JSON</button>
-<p class="small muted">此模块不导出视频和照片；诊断 JSON 最多包含最近 300 条 IMU 数值，用于分析数据采集稳定性。</p>
-</div>
 <div class="card"><h2>旧版实验与研发入口</h2><p class="small muted">旧版关键帧匹配、双视图 VO 和 IMU 诊断继续保留，供算法调试使用，不代表正式导航产品。</p><a href="./web-vio-demo.html">打开视觉与 IMU 诊断工具</a></div>
 </main>
 <script src="./web-vio-features.js"></script><script src="./web-vio-geometry.js"></script><script src="./vin-landmark-graph.js"></script><script src="./web-vio-pose.js"></script><script src="./vin-vo-path.js"></script><script src="./vin-scan.js"></script><script src="./vin-a4-board.js"></script><script src="./web-metric-map.js"></script><script src="./vin-app.js"></script><script src="./vio-sensor-core.js"></script><script src="./vio-tracker.js"></script><script src="./vio-sensor-probe.js"></script>
