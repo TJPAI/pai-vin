@@ -8,7 +8,7 @@ const W=256,H=192,MAX=60,INTERVAL=1050,TRACK_INTERVAL=240;
 const cv=document.createElement('canvas');cv.width=W;cv.height=H;
 const ctx=cv.getContext('2d',{willReadFrequently:true});
 let stream=null,mode='',timer=null,trackTimer=null,busy=false,frames=[],db=null,imu=null;
-let lastTrackPoints=null,trackFrames=0,trackGood=0,lastTrackTime=0,visualMotion=null;
+let lastTrackPoints=null,trackFrames=0,trackGood=0,lastTrackTime=0,visualMotion=null,voAttempt=0;
 let queries=0,hits=0,attempts=0,lastCandidate=-1,candidateStreak=0,lastConfirmed=-1,route=[];
 const set=(id,v)=>{const el=$(id);if(el)el.textContent=v};
 const status=v=>set('status',v);
@@ -46,6 +46,18 @@ function track(){
    const v=VINGeometry.verify(lastTrackPoints,pts);
    if(v.accepted)trackGood++;
    trackFrames++;visualMotion=v;showMotion(v);
+   // Relative 3D pose is intentionally evaluated at a slower rate on iPhone.
+   if(++voAttempt%4===0){
+    const pairs=VINGeometry.correspond(lastTrackPoints,pts);
+    const pose=VINVO.estimate(lastTrackPoints,pts,{pairs,focal:220,iterations:36});
+    if(pose.ok){
+     set('voPose','旋转 '+pose.rotationDeg.toFixed(1)+'° · 平移方向 ['+pose.t.map(n=>n.toFixed(2)).join(', ')+']');
+     set('voQuality',pose.inliers+'/'+pose.matches+' 极线内点；未知真实尺度');
+    }else{
+     set('voPose','相对位姿不可可靠确定');
+     set('voQuality',(pose.inliers||0)+'/'+(pose.matches||0)+' 极线内点 · '+pose.reason);
+    }
+   }
   }else{set('trackQuality','纹理不足，请寻找有边缘的区域')}
   lastTrackPoints=pts;lastTrackTime=now;
  }catch(e){set('trackQuality','跟踪错误：'+e.message)}
@@ -153,10 +165,10 @@ async function tick(){
 }
 function start(which){
  if(!stream)return status('请先开启摄像头');
- if(typeof VINFeatures==='undefined')return status('特征模块未加载，请刷新页面');
+ if(typeof VINFeatures==='undefined'||typeof VINVO==='undefined')return status('视觉模块未加载，请刷新页面');
  if(which==='localization'&&!frames.length)return status('请先建立关键帧地图');
  if(mode)return;
- mode=which;lastTrackPoints=null;trackFrames=0;trackGood=0;visualMotion=null;set('trackRate','0/0');showMotion(null);queries=0;hits=0;attempts=0;lastCandidate=-1;candidateStreak=0;lastConfirmed=-1;route=[];set('route','—');set('hits','0/0');
+ mode=which;lastTrackPoints=null;trackFrames=0;trackGood=0;visualMotion=null;voAttempt=0;set('voPose','等待数据');set('voQuality','—');set('trackRate','0/0');showMotion(null);queries=0;hits=0;attempts=0;lastCandidate=-1;candidateStreak=0;lastConfirmed=-1;route=[];set('route','—');set('hits','0/0');
  status(which==='mapping'?'开始采集视觉关键帧':'开始检索已有视觉地图');
  toggleButtons();tick();timer=setInterval(tick,INTERVAL);trackTimer=setInterval(track,TRACK_INTERVAL);
 }
