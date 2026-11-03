@@ -127,7 +127,7 @@
    scanStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480}}});
    $('scanCamera').srcObject=scanStream;await $('scanCamera').play();
    buttons();say('scanStatus','摄像头已启动。扫描区域并回到起点，特征仅保存在本机。');
-   prevMotionFrame=null;motionAnchor=null;anchorAge=0;stillFrames=0;stillFrames=0;voChecks=0;voAccepted=0;voRejected=0;diagnostics.length=0;sketch=new VINPath.Sketch();Object.keys(voReasons).forEach(k=>delete voReasons[k]);
+   prevMotionFrame=null;motionAnchor=null;anchorAge=0;stillFrames=0;voChecks=0;voAccepted=0;voRejected=0;diagnostics.length=0;sketch=new VINPath.Sketch();Object.keys(voReasons).forEach(k=>delete voReasons[k]);
    scanTick();scanTimer=setInterval(scanTick,1400);
    voTimer=setInterval(voTick,450);
   }catch(e){
