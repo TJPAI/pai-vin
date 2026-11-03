@@ -8,16 +8,18 @@
  const context=canvas.getContext('2d',{willReadFrequently:true});
  let graph=new VINLandmarks.Graph(),sketch=new VINPath.Sketch(),scanStream=null,scanTimer=null,voTimer=null,recTimer=null,db=null;
  let scanBusy=false,voBusy=false,recBusy=false,lastPlace=-1,confirmed=0,recognitions=[];
- let prevMotionPoints=null;let voChecks=0;const voReasons={};
+ let prevMotionFrame=null;let pendingDirections=[];let voChecks=0;const voReasons={};
  const say=(id,t)=>{if($(id))$(id).textContent=t};
  const buttons=()=>{if($('scanStart'))$('scanStart').disabled=!!scanStream;
   if($('scanStop'))$('scanStop').disabled=!scanStream};
- function frame(video){
+ function frameImage(video){
   if(!video||video.readyState<2)return null;
   context.drawImage(video,0,0,canvas.width,canvas.height);
   const bytes=context.getImageData(0,0,canvas.width,canvas.height).data;
-  return VINFeatures.detect(VINFeatures.grayRGBA(bytes));
+  const gray=VINFeatures.grayRGBA(bytes);
+  return {points:VINFeatures.detect(gray),gray};
  }
+ function frame(video){return frameImage(video)?.points||null}
  function openDatabase(){
   return new Promise((resolve,reject)=>{
    const req=indexedDB.open('pai-vin-visual-graph-v1',1);
@@ -52,19 +54,39 @@
   if(voBusy||!scanStream)return;
   voBusy=true;
   try{
-   const pts=frame($('scanCamera'));
-   if(!pts)return;
-   if(prevMotionPoints){
+   const now=frameImage($('scanCamera'));
+   if(!now)return;
+   if(prevMotionFrame){
     voChecks++;
-    const step=VINPath.parseStep(prevMotionPoints,pts,VINGeometry,VINVO);
-    if(step.ok)sketch.append(step);
-    else{sketch.rejected++;const key=step.reason||'unknown';voReasons[key]=(voReasons[key]||0)+1}
+    const photo=VINPath.frameChange(prevMotionFrame.gray,now.gray);
+    const step=VINPath.parseStep(prevMotionFrame.points,now.points,VINGeometry,VINVO,{frameChange:photo});
+    if(step.ok){
+     // Require three consecutive, similarly directed estimates before a path
+     // update. Sporadic photometric changes and bad two-view solutions freeze it.
+     const dir=Math.atan2(step.dz,step.dx);
+     const prev=pendingDirections[pendingDirections.length-1];
+     const angular=(a,b)=>Math.abs(Math.atan2(Math.sin(a-b),Math.cos(a-b)));
+     if(prev&&angular(dir,prev.dir)>.45)pendingDirections=[];
+     pendingDirections.push({dir,step});
+     if(pendingDirections.length>=3){
+      const anchor=pendingDirections[0].dir;
+      if(pendingDirections.every(d=>angular(d.dir,anchor)<.45)){
+       // Only newest genuine observation counts as one arbitrary step.
+       sketch.append(step);
+      }
+      pendingDirections=pendingDirections.slice(-2);
+     }
+    }else{
+     pendingDirections=[];
+     sketch.rejected++;
+     const key=step.reason||'unknown';voReasons[key]=(voReasons[key]||0)+1;
+    }
     VINPath.render($('voCanvas'),sketch);
-    const top=Object.entries(voReasons).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([k,v])=>k+': '+v).join('；');
-    say('voScanStatus','连续视觉检查 '+voChecks+' 次；可信运动段 '+(sketch.nodes.length-1)+'，未通过 '+sketch.rejected+'。'+(top?'原因：'+top:'')+'。非米制轨迹。');
+    const top=Object.entries(voReasons).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>k+': '+v).join('；');
+    say('voScanStatus','连续视觉检查 '+voChecks+' 次；通过且连续的运动段 '+(sketch.nodes.length-1)+'，冻结/拒绝 '+sketch.rejected+'。'+(top?'原因：'+top:'')+'。静止时应保持不变；非米制轨迹。');
    }
-   prevMotionPoints=pts;
-  }catch(e){say('voScanStatus','视觉运动检测异常：'+e.message)}
+   prevMotionFrame=now;
+  }catch(e){pendingDirections=[];say('voScanStatus','视觉运动检测异常：'+e.message)}
   finally{voBusy=false}
  }
  async function scanTick(){
@@ -99,7 +121,7 @@
    scanStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480}}});
    $('scanCamera').srcObject=scanStream;await $('scanCamera').play();
    buttons();say('scanStatus','摄像头已启动。扫描区域并回到起点，特征仅保存在本机。');
-   prevMotionPoints=null;voChecks=0;Object.keys(voReasons).forEach(k=>delete voReasons[k]);
+   prevMotionFrame=null;pendingDirections=[];voChecks=0;Object.keys(voReasons).forEach(k=>delete voReasons[k]);
    scanTick();scanTimer=setInterval(scanTick,1400);
    voTimer=setInterval(voTick,450);
   }catch(e){
@@ -108,7 +130,7 @@
   }
  }
  async function stopScan(){
-  clearInterval(scanTimer);scanTimer=null;clearInterval(voTimer);voTimer=null;prevMotionPoints=null;
+  clearInterval(scanTimer);scanTimer=null;clearInterval(voTimer);voTimer=null;prevMotionFrame=null;pendingDirections=[];
   if(scanStream)scanStream.getTracks().forEach(t=>t.stop());
   scanStream=null;$('scanCamera').srcObject=null;buttons();
   try{if(db)await save()}catch(e){say('scanStatus','保存失败：'+e.message);return}
