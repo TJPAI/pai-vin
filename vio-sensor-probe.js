@@ -19,6 +19,8 @@
   $('vioNumbers').textContent='视频帧 '+r.cameraFrames+' · IMU '+r.imuSamples+' · 帧率 '+r.cameraRateHz.toFixed(1)+' Hz · IMU '+r.imuRateHz.toFixed(1)+' Hz · 同步窗 '+(win.ok?'可用':'不可用 '+win.reason);
   const q=lastTrackingReport;
   $('vioTrackNumbers').textContent=q?'图像跟踪点 '+q.total+' · 连续继承 '+q.retained+' · 5帧以上 '+q.longLived+' · 丢失 '+q.lost+' · 平均寿命 '+q.avgAge.toFixed(1)+' 帧':'尚未获得连续视觉特征';
+  const fusionStatus=$('vioFusionStatus');
+  if(fusionStatus)fusionStatus.textContent='视觉旋转求解器已接入；视觉-IMU 姿态校正未启用：缺少实测相机内参、相机—IMU 外参及时间偏差。';
   const sensor=$('vioInitStatus');
   if(sensor){
    if(attitude){const state=attitude.snapshot();sensor.textContent='静止初始化成功 · 陀螺仪偏置 '+state.gyroBias.map(x=>x.toFixed(4)).join(', ')+' rad/s · IMU 姿态更新 '+state.samples+' 次 · 无视觉融合及米制位姿';}
@@ -87,6 +89,7 @@
   const {r,win}=report();
   const data={schema:'pai-vin-vio-acquisition-v1',capturedAt:new Date().toISOString(),browserClock:'performance.now',
    cameraExposureTimestampAvailable:false,deviceIMUExtrinsicsCalibrated:false,wasmVioEstimatorConnected:false,
+   visualRotationModuleAvailable:true,visualAttitudeCorrectionEnabled:false,
    metricPoseAvailable:false,containsPhotos:false,containsFrames:false,
    transport:r,window:win.ok?{ok:true,dt:win.dt,maxGapMs:win.maxGapMs}:win,
    visualTracking:lastTrackingReport?{total:lastTrackingReport.total,retained:lastTrackingReport.retained,longLived:lastTrackingReport.longLived,avgAge:lastTrackingReport.avgAge,medianError:lastTrackingReport.medianError}:null,
