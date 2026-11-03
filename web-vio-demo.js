@@ -9,6 +9,7 @@ const cv=document.createElement('canvas');cv.width=W;cv.height=H;
 const ctx=cv.getContext('2d',{willReadFrequently:true});
 let stream=null,mode='',timer=null,trackTimer=null,busy=false,frames=[],db=null,imu=null;
 let lastTrackPoints=null,trackFrames=0,trackGood=0,lastTrackTime=0,visualMotion=null,voAttempt=0;
+const gyro=new VINInertial.GyroBuffer();let gyroListenerInstalled=false;
 let queries=0,hits=0,attempts=0,lastCandidate=-1,candidateStreak=0,lastConfirmed=-1,route=[];
 const set=(id,v)=>{const el=$(id);if(el)el.textContent=v};
 const status=v=>set('status',v);
@@ -53,7 +54,14 @@ function track(){
     if(pose.ok){
      set('voPose','旋转 '+pose.rotationDeg.toFixed(1)+'° · 平移方向 ['+pose.t.map(n=>n.toFixed(2)).join(', ')+']');
      set('voQuality',pose.inliers+'/'+pose.matches+' 极线内点；未知真实尺度');
+     const sensor=gyro.interval(lastTrackTime,now);
+     const check=VINInertial.compare(pose.rotationDeg,sensor);
+     if(check.status==='unknown')set('fusionStatus','IMU 数据不足：'+(check.reason||'未知'));
+     else set('fusionStatus',check.status==='consistent'?
+       '视觉/陀螺仪旋转幅度基本一致（仅质量门控）':
+       '旋转结果不一致，当前位姿应降权；视觉 '+pose.rotationDeg.toFixed(1)+'° / IMU '+sensor.angleDeg.toFixed(1)+'°');
     }else{
+     set('fusionStatus','视觉位姿不可靠，暂不进行一致性检查');
      set('voPose','相对位姿不可可靠确定');
      set('voQuality',(pose.inliers||0)+'/'+(pose.matches||0)+' 极线内点 · '+pose.reason);
     }
@@ -99,6 +107,10 @@ async function motion(){
     set('heading',imu.heading!=null?imu.heading.toFixed(0)+'°（指南针）':imu.alpha.toFixed(0)+'°（相对方向）');
    }
   });
+  if(!gyroListenerInstalled){
+   window.addEventListener('devicemotion',e=>{gyro.push(performance.now(),e.rotationRate)});
+   gyroListenerInstalled=true;
+  }
   set('sensorStatus','摄像头 '+(stream?'已开启':'关闭')+' · IMU 权限已请求（等待数据）');
  }catch(e){set('sensorStatus','IMU 授权失败：'+e.message)}
 }
@@ -165,10 +177,10 @@ async function tick(){
 }
 function start(which){
  if(!stream)return status('请先开启摄像头');
- if(typeof VINFeatures==='undefined'||typeof VINVO==='undefined')return status('视觉模块未加载，请刷新页面');
+ if(typeof VINFeatures==='undefined'||typeof VINVO==='undefined'||typeof VINInertial==='undefined')return status('视觉模块未加载，请刷新页面');
  if(which==='localization'&&!frames.length)return status('请先建立关键帧地图');
  if(mode)return;
- mode=which;lastTrackPoints=null;trackFrames=0;trackGood=0;visualMotion=null;voAttempt=0;set('voPose','等待数据');set('voQuality','—');set('trackRate','0/0');showMotion(null);queries=0;hits=0;attempts=0;lastCandidate=-1;candidateStreak=0;lastConfirmed=-1;route=[];set('route','—');set('hits','0/0');
+ mode=which;gyro.reset();set('fusionStatus','等待视觉和 IMU 采样');lastTrackPoints=null;trackFrames=0;trackGood=0;visualMotion=null;voAttempt=0;set('voPose','等待数据');set('voQuality','—');set('trackRate','0/0');showMotion(null);queries=0;hits=0;attempts=0;lastCandidate=-1;candidateStreak=0;lastConfirmed=-1;route=[];set('route','—');set('hits','0/0');
  status(which==='mapping'?'开始采集视觉关键帧':'开始检索已有视觉地图');
  toggleButtons();tick();timer=setInterval(tick,INTERVAL);trackTimer=setInterval(track,TRACK_INTERVAL);
 }
