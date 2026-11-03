@@ -14,12 +14,20 @@ input{max-width:100%;width:100%;font-size:14px;color:#dceeff}code{font-size:12px
 .good{color:#8bf0b9}.stage{margin:11px 0;padding:11px;background:#102139;border-radius:12px}.stage b{display:block;margin-bottom:4px}
 [hidden]{display:none!important}
 </style></head><body><main>
-<h1>PAI-VIN <span class="muted small">新架构 · V2.0 Alpha</span></h1>
+<h1>PAI-VIN <span class="muted small">新架构 · V2.1 Alpha</span></h1>
 <p class="muted">首次建图一次 · 以后打开摄像头就能定位</p>
 <div class="tabs"><button id="tabSetup" aria-selected="true" type="button">① 首次建图</button><button id="tabUse" aria-selected="false" class="alt" type="button">② 日常定位</button></div>
 <section id="setup">
  <div class="card"><h2>准备：A4 标定 + 手机扫描</h2>
- <div class="stage"><b>1. A4 米制参照</b><p class="small muted">标准 A4、100% 实际尺寸打印。四个中心点间距应为 160 × 247 mm。标定板用于建立尺度约束；不代表已经完成相机内参标定。</p><a class="action alt" href="./a4-board.html">查看/打印标定板</a></div>
+ <div class="stage"><b>1. A4 米制参照</b><p class="small muted">标准 A4、100% 实际尺寸打印。四个中心点间距应为 160 × 247 mm。标定板用于建立尺度约束；不代表已经完成相机内参标定。</p><a class="action alt" href="./a4-board.html">查看/打印标定板</a>
+ <p class="small muted">在 Safari 中对准打印的标定纸，截图后依次点选四个标志的中心：左上 → 右上 → 右下 → 左下。</p>
+ <video id="boardCamera" autoplay muted playsinline></video>
+ <div class="grid"><button id="boardOpen" type="button">开启标定摄像头</button><button id="boardSnap" type="button" disabled>拍摄标定帧</button></div>
+ <canvas id="boardCanvas" width="360" height="480" style="margin-top:9px;touch-action:manipulation" aria-label="拍摄标定图及四角点选"></canvas>
+ <div class="grid"><button id="boardReset" class="alt" type="button">重新点选</button><button id="boardSave" type="button" disabled>保存平面标定</button></div>
+ <p class="small muted" id="boardStatus">未标定。需要实际拍摄四角标定纸。</p>
+ <p class="small muted">重要：此步骤只建立 A4 所在平面的像素到米坐标关系；不会自动得到整栋楼尺度，也不能替代 SLAM 的内参与外参标定。</p>
+ </div>
  <div class="stage"><b>2. 扫描室内环境</b><p class="small muted">从 A4 附近开始，逐步扫描并回到起点。保留原始视频，用于建立几何地图和验证闭环。</p><a class="action" href="./index.html#slamCapture">打开手机视频采集</a></div>
  <div class="stage"><b>3. 验证并保存地图</b><p class="small muted">需包含米制尺度已校验、建筑二维平面坐标和相机可重定位所需的特征。现有实拍 COLMAP 局部点云尚不能直接替代此地图。</p>
  <label for="mapFile">导入已完成校验的本地地图 JSON（开发接口）</label><input id="mapFile" type="file" accept=".json,application/json"><p id="mapStatus" class="small muted">尚无经过校验的米制地图。</p></div>
@@ -38,6 +46,6 @@ input{max-width:100%;width:100%;font-size:14px;color:#dceeff}code{font-size:12px
 </section>
 <div class="card"><h2>研发入口</h2><p class="small muted">旧版关键帧匹配、双视图 VO 和 IMU 诊断继续保留，供算法调试使用，不代表正式导航产品。</p><a href="./web-vio-demo.html">打开视觉与 IMU 诊断工具</a></div>
 </main>
-<script src="./web-metric-map.js"></script><script src="./vin-app.js"></script>
+<script src="./vin-a4-board.js"></script><script src="./web-metric-map.js"></script><script src="./vin-app.js"></script>
 <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(()=>{});</script>
 </body></html>
