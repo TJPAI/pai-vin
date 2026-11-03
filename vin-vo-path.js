@@ -9,12 +9,40 @@
  'use strict';
  const finite=v=>Number.isFinite(v);
  function median(v){const a=v.slice().sort((x,y)=>x-y);return a.length?a[a.length>>1]:0}
- function parseStep(a,b,geometry,vo){
+ // Photometric stationary gate: exposure-robust local image difference.
+ // A stationary camera may receive auto-exposure shifts; remove median luminance
+ // offset before measuring textured pixel change.
+ function frameChange(a,b){
+  if(!a||!b||a.length!==b.length||a.length<1024)return {ok:false,reason:'missing_frames'};
+  const increments=[],diff=[];
+  for(let i=0;i<a.length;i+=8)increments.push(b[i]-a[i]);
+  const offset=median(increments);
+  for(let i=0;i<a.length;i+=8)diff.push(Math.abs((b[i]-a[i])-offset));
+  const sorted=diff.sort((x,y)=>x-y),p75=sorted[Math.floor(sorted.length*.75)],p90=sorted[Math.floor(sorted.length*.9)];
+  const frac=sorted.filter(x=>x>=16).length/sorted.length;
+  const changed=p75>=13&&p90>=27&&frac>=.18;
+  return {ok:changed,reason:changed?'photometric_change':'stationary_frame',p75,p90,frac,exposureOffset:offset};
+ }
+ // Estimate translation evidence from spatially coherent feature movements.
+ // This intentionally rejects ambiguous pure rotation/zoom and drifting features.
+ function flowEvidence(a,b,pairs){
+  const flows=pairs.map(m=>({dx:b[m.j].x-a[m.i].x,dy:b[m.j].y-a[m.i].y,x:a[m.i].x,y:a[m.i].y}));
+  const dx=median(flows.map(f=>f.dx)),dy=median(flows.map(f=>f.dy));
+  const medianFlow=Math.hypot(dx,dy);
+  const agreement=flows.filter(f=>Math.hypot(f.dx-dx,f.dy-dy)<3.8).length/Math.max(1,flows.length);
+  const grid=new Set(flows.filter(f=>Math.hypot(f.dx-dx,f.dy-dy)<3.8).map(f=>(f.x<128?0:1)+(f.y<96?0:2)));
+  return {medianFlow,agreement,spread:grid.size};
+ }
+  function parseStep(a,b,geometry,vo,options={}){
+  const photo=options.frameChange;
+  if(!photo?.ok)return {ok:false,reason:photo?.reason||'no_frame_motion_evidence'};
   const pairs=geometry.correspond(a,b);
-  if(pairs.length<16)return {ok:false,reason:'few_correspondences',pairs:pairs.length};
+  if(pairs.length<18)return {ok:false,reason:'few_correspondences',pairs:pairs.length};
+  const evidence=flowEvidence(a,b,pairs);
+  if(evidence.medianFlow<4.2||evidence.agreement<.48||evidence.spread<3)return {ok:false,reason:'incoherent_or_stationary_flow',evidence};
   const displacement=median(pairs.map(m=>Math.hypot(a[m.i].x-b[m.j].x,a[m.i].y-b[m.j].y)));
   // Reject nearly fixed image, especially pure stationary camera.
-  if(displacement<2.8)return {ok:false,reason:'low_image_motion',pairs:pairs.length,displacement};
+  if(displacement<4.0)return {ok:false,reason:'low_image_motion',pairs:pairs.length,displacement};
   const p=vo.estimate(a,b,{pairs,focal:220,iterations:46,thresholdPx:2.0});
   if(!p.ok||p.inliers<14||p.ratio<.42||p.cheirality<8||!p.R||!p.t)
    return {ok:false,reason:'epipolar_unreliable',pairs:pairs.length,inliers:p.inliers||0};
@@ -27,7 +55,7 @@
   const yaw=Math.atan2(R[0][2],R[2][2]);
   if(![dx,dz,yaw].every(finite)||Math.abs(yaw)>1.3)return {ok:false,reason:'unstable_rotation'};
   return {ok:true,dx:dx/horizontal,dz:dz/horizontal,yaw,displacement,inliers:p.inliers,pairs:p.matches,
-   units:'arbitrary_step',metric:false};
+   units:'arbitrary_step',metric:false,evidence};
  }
  class Sketch{
   constructor(saved){
@@ -70,5 +98,5 @@
   c.fillStyle='#bad3e8';c.font='12px -apple-system,sans-serif';
   c.fillText('累计相对方向，仅算法诊断；不能用于导航',12,h-13);
  }
- return {parseStep,Sketch,render};
+ return {parseStep,Sketch,render,frameChange,flowEvidence};
 });
