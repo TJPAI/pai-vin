@@ -81,7 +81,14 @@ function quality(views,width,height,estimateResult){
  if(leaveOneOut>.01)reasons.push('leave_one_out_focal_variation_gt_1pct');
  if(estimateResult.reprojectionRmsPx>1)reasons.push('in_sample_reprojection_gt_1px');
  if(perView.some(x=>x>1.8))reasons.push('individual_view_fit_gt_1_8px');
- return {status:reasons.length?'review':'candidate_consistent',
+ // Distinguish unstable corner data from pinhole-model limitations.
+ // Do not instruct repeated shooting when leave-one-out focal is already stable.
+ const captureReview=leaveOneOut>.01;
+ const modelLimit=estimateResult.reprojectionRmsPx>1||perView.some(x=>x>1.8);
+ const status=captureReview?'review_capture':modelLimit?'model_limited':'candidate_consistent';
+ return {status,needsAdditionalViews:captureReview,
+  modelLimitDetected:modelLimit,
+  guidance:captureReview?'capture_more_diverse_views':modelLimit?'improve_intrinsic_distortion_model':'no_additional_capture_needed',
   reasons,tiltSpread:spread,tilts,leaveOneOutRelativeSpread:leaveOneOut,
   thresholdRelative:0.01,inSampleReprojectionRmsPx:estimateResult.reprojectionRmsPx,
   independentValidation:false,distortionEstimated:false,
