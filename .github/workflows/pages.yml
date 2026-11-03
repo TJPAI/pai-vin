@@ -1,4 +1,4 @@
-name: Publish PAI-VIN PWA
+name: Publish PAI-VIN VIO PWA
 on:
   push:
     branches: [main]
@@ -19,65 +19,32 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Validate SLAM-only app
+      - name: Validate active VIO code
         run: |
-          python3 -m py_compile tools/prepare_slam_dataset.py tools/run_colmap_baseline.py
-          python3 tests/test_colmap_parser.py
-          test -s docs/SLAM_DATASET.md
-          node --check slam-capture.js
-          node --check web-vio-demo.js
-          node --check web-vio-geometry.js
-          node --check web-vio-features.js
-          node tests/web-vio-features.test.cjs
-          node --check web-vio-pose.js
-          node tests/web-vio-pose.test.cjs
-          node --check web-vio-inertial.js
-          node tests/web-vio-inertial.test.cjs
-          node --check web-metric-map.js
-          node tests/web-metric-map.test.cjs
-          node --check vin-app.js
           node --check vin-a4-board.js
-          node --check vin-landmark-graph.js
-          node --check vin-scan.js
-          grep -q 'setInterval(voTick,450)' vin-scan.js
-          if grep -q 'snake traversal' vin-landmark-graph.js; then exit 1; fi
-          node tests/vin-landmark-graph.test.cjs
-          node --check vin-vo-path.js
-          node tests/vin-vo-path.test.cjs
+          node --check vin-app.js
           node --check vio-sensor-core.js
           node --check vio-sensor-probe.js
-          node tests/vio-sensor-core.test.cjs
           node --check vio-tracker.js
-          node tests/vio-tracker.test.cjs
-          grep -q 'vioTrackCanvas' vin-app.html
-          grep -q 'vio-sensor-probe.js' vin-app.html
-          test -s docs/VIO_V3_ARCHITECTURE.md
-          grep -q 'frameChange(prevMotionFrame.gray,now.gray)' vin-scan.js
-          grep -q 'motionAnchor.points,now.points' vin-scan.js
-          grep -q 'exportDiagnosis' vin-scan.js
-          grep -q 'id="voExport"' vin-app.html
-          node tests/vin-a4-board.test.cjs
-          test -s vin-app.html
-          grep -q 'vin-app.html' index.html
-          node tests/web-vio-geometry.test.cjs
-          test -s web-vio-demo.html
-          grep -q 'web-vio-demo.html' index.html
+          node --check web-vio-features.js
           node --check sw.js
-          test -s a4-board.html
-          test -s index.html
-          grep -q 'slam-capture.js' index.html
-          grep -q 'a4-board.html' index.html
-          grep -q 'slam-capture.js' sw.js
-          if grep -Eq 'app.js|storage.js|auto-lift.js|heading.js|vision.js' index.html; then
-            echo 'Legacy scripts must not be loaded'
-            exit 1
-          fi
+          node tests/vin-a4-board.test.cjs
+          node tests/vio-sensor-core.test.cjs
+          node tests/vio-tracker.test.cjs
+          node tests/web-vio-features.test.cjs
+          node tests/vio-clean-app.test.cjs
+      - name: Assemble minimal site
+        run: |
+          mkdir -p dist
+          cp index.html vin-app.html vin-app.js manifest.json a4-board.html vin-a4-board.js web-vio-features.js vio-sensor-core.js vio-tracker.js vio-sensor-probe.js sw.js dist/
+          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 11
+          ! grep -R 'web-vio-demo\|vin-vo-path\|vin-scan' dist/
       - name: Setup Pages
         uses: actions/configure-pages@v5
-      - name: Upload site
+      - name: Upload clean PWA
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: dist
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
