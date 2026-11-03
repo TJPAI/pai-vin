@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict');
+const {GyroBuffer,compare}=require('../web-vio-inertial.js');
+const g=new GyroBuffer();
+for(let t=0;t<=1000;t+=20)assert.equal(g.push(t,{alpha:0,beta:0,gamma:90}),true);
+const q=g.interval(100,900);assert.equal(q.ok,true,JSON.stringify(q));
+assert.ok(Math.abs(q.angleDeg-72)<.1,JSON.stringify(q));
+assert.equal(g.push(900,{alpha:0,beta:0,gamma:90}),false,'reject duplicate time');
+assert.equal(g.push(1010,{alpha:null,beta:0,gamma:90}),false,'reject missing axis');
+assert.equal(g.fresh(1200),true);assert.equal(g.fresh(2500),false);
+assert.equal(compare(70,q).status,'consistent');
+assert.equal(compare(3,q).status,'disagree');
+assert.equal(compare(25,{ok:false,reason:'sensor_gap'}).status,'unknown');
+const gap=new GyroBuffer();
+gap.push(0,{alpha:0,beta:0,gamma:50});gap.push(1000,{alpha:0,beta:0,gamma:50});
+assert.equal(gap.interval(0,1000).ok,false);
+g.reset();assert.equal(g.fresh(1000),false);
+console.log('Safari gyro integration and VO consistency tests PASS');
