@@ -11,6 +11,24 @@ function shift(a,dx,dy){
   b[y*W+x]=(px>=0&&py>=0&&px<W&&py<H)?a[py*W+px]:0;
  }return b;
 }
+// Regression: fast SSD must equal the legacy two-pass definition for all patches.
+function referenceSSD(a,b,w,h,x,y,u,v,r=2){
+ let sa=0,sb=0,s=0,n=0;
+ for(let j=-r;j<=r;j++)for(let i=-r;i<=r;i++){
+  sa+=a[(y+j)*w+x+i];sb+=b[(v+j)*w+u+i];n++;
+ }
+ const offset=Math.round((sb-sa)/n);
+ for(let j=-r;j<=r;j++)for(let i=-r;i<=r;i++){
+  const d=a[(y+j)*w+x+i]+offset-b[(v+j)*w+u+i];s+=d*d;
+ }
+ return s/n;
+}
+const brightness=shift(image,3,2);
+for(let i=0;i<200;i++){
+ const x=5+(i*19)%(W-10),y=5+(i*23)%(H-10);
+ const u=5+(i*17)%(W-10),v=5+(i*29)%(H-10);
+ assert.ok(Math.abs(V.score(image,brightness,W,H,x,y,u,v)-referenceSSD(image,brightness,W,H,x,y,u,v))<1e-8,'one-pass SSD must be exact');
+}
 const tracker=new V.Tracker({maxTracks:85});
 const first=tracker.update(image,100);
 assert.ok(first.total>=35,JSON.stringify(first));

@@ -18,18 +18,17 @@ function pixels(g,w,h,x,y){
  const vy=Math.abs(g[i+w]-g[i-w])+Math.abs(g[i+w+1]-g[i-w+1]);
  return Math.min(vx,vy)>22;
 }
+// One-pass brightness-offset-corrected SSD, mathematically equivalent to
+// the original two-pass search. Keep the integer offset for exact behaviour.
 function score(a,b,w,h,x,y,u,v,r=2){
  if(x<r||y<r||u<r||v<r||x>=w-r||u>=w-r||y>=h-r||v>=h-r)return Infinity;
- let s=0,sa=0,sb=0,n=0;
+ let sum=0,sum2=0;
  for(let j=-r;j<=r;j++)for(let i=-r;i<=r;i++){
-  const va=a[(y+j)*w+x+i],vb=b[(v+j)*w+u+i];
-  sa+=va;sb+=vb;n++;
+  const d=a[(y+j)*w+x+i]-b[(v+j)*w+u+i];
+  sum+=d;sum2+=d*d;
  }
- const offset=Math.round((sb-sa)/n);
- for(let j=-r;j<=r;j++)for(let i=-r;i<=r;i++){
-  const d=a[(y+j)*w+x+i]+offset-b[(v+j)*w+u+i];s+=d*d;
- }
- return s/n;
+ const n=(2*r+1)*(2*r+1),offset=Math.round(-sum/n);
+ return (sum2+2*offset*sum+n*offset*offset)/n;
 }
 function nearest(a,b,w,h,x,y,px,py,search){
  let best=Infinity,bx=-1,by=-1;
