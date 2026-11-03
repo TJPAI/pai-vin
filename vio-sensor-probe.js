@@ -25,10 +25,13 @@
   const fusionStatus=$('vioFusionStatus');
   if(fusionStatus){
    const last=lastVisual;
+   const names={insufficient_tracks:'连续特征不足',rotation_geometry_unreliable:'旋转几何不一致',
+    invalid_frame_timing:'帧时间异常',intrinsics_missing:'相机参数缺失',
+    rotation_jump:'旋转估计跳变',visual_observation_exception:'观测模块异常'};
    const recent=last?.ok?'视觉旋转 '+last.cameraRelativeAngleDeg.toFixed(2)+'°，内点 '+last.visualInliers+'/'+last.visualMatchCount:
-    (last?'视觉估计未通过：'+last.reason+'，匹配 '+last.visualMatchCount:'等待连续视觉帧');
+    (last?'视觉观测暂不可用：'+(names[last.reason]||last.reason)+'，匹配 '+last.visualMatchCount:'等待连续视觉帧');
    fusionStatus.textContent='实时视觉观测：'+recent+'；本次通过 '+visualAccepted+' 次，未通过 '+visualRejected+' 次。'+
-    ' IMU 同步：'+(last?last.imuWindowOk?'可用':'不可用 ('+last.imuWindowReason+')':'等待')+
+    ' IMU 数据窗口：'+(last?last.imuWindowOk?'可用':'不可用 ('+last.imuWindowReason+')':'等待')+
     '。采用未标定名义焦距，仅作诊断，不进行姿态融合或位置输出。';
   }
   const sensor=$('vioInitStatus');
