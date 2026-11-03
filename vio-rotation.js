@@ -56,7 +56,7 @@ function fitRotation(pairs,iterations=7){
 const angular=(a,b)=>Math.acos(Math.max(-1,Math.min(1,dot(a,b))));
 function estimate(matches,intr,options={}){
  const pairs=bearings(matches,intr),min=options.minInliers??18;
- if(!pairs||pairs.length<min)return {ok:false,reason:!pairs?'intrinsics_missing':'insufficient_tracks',count:pairs?.length||0};
+ if(!pairs||pairs.length<min)return {ok:false,reason:!pairs?'intrinsics_missing':'insufficient_tracks',count:pairs?.length||0,total:pairs?.length||0,inliers:0};
  // deterministic triplet sampling guards against depth-dependent parallax.
  const attempts=Math.min(90,Math.max(30,pairs.length*2));
  const threshold=options.thresholdRad??.012;
@@ -76,9 +76,9 @@ function estimate(matches,intr,options={}){
  const med=errors[errors.length>>1];
  // Rotation may be predicted but never accepted as camera/body calibration.
  if(ratio<(options.minRatio??.72)||med>(options.maxMedianError??.007))
-  return {ok:false,reason:'rotation_geometry_unreliable',ratio,inliers:inliers.length,medianErrorRad:med};
+  return {ok:false,reason:'rotation_geometry_unreliable',total:pairs.length,ratio,inliers:inliers.length,medianErrorRad:med};
  const theta=Math.acos(Math.max(-1,Math.min(1,(R[0][0]+R[1][1]+R[2][2]-1)/2)));
- if(theta>.55)return {ok:false,reason:'rotation_jump',theta};
+ if(theta>.55)return {ok:false,reason:'rotation_jump',total:pairs.length,inliers:inliers.length,theta};
  return {ok:true,rotationCameraCurrentFromPrevious:R,inliers:inliers.length,total:pairs.length,
   ratio,medianErrorRad:med,theta,metricTranslation:null,absoluteHeadingKnown:false,
   cameraIMUExtrinsicsApplied:false,assumesProvidedIntrinsics:true};
