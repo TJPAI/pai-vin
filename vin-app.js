@@ -52,18 +52,20 @@ $('startCamera').onclick=async()=>{
   stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480}}});
   $('camera').srcObject=stream;await $('camera').play();
   $('startCamera').disabled=true;$('stopCamera').disabled=false;
-  say('cameraStatus','摄像头已开启，等待真实定位引擎');
+  say('cameraStatus','摄像头已开启。尝试本机视觉场景识别；米制 SLAM 定位引擎仍未接入。');
+  if(window.VINScan)VINScan.startRecognize($('camera'));
  }catch(err){
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
   say('cameraStatus','摄像头权限/启动失败：'+err.message);
  }
 };
 $('stopCamera').onclick=()=>{
+ if(window.VINScan)VINScan.stopRecognize();
  if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;
  $('camera').srcObject=null;$('startCamera').disabled=false;$('stopCamera').disabled=true;
  say('cameraStatus','摄像头已关闭');
 };
-window.addEventListener('pagehide',()=>{if(stream)stream.getTracks().forEach(t=>t.stop())});
+window.addEventListener('pagehide',()=>{if(window.VINScan)VINScan.stopRecognize();if(stream)stream.getTracks().forEach(t=>t.stop())});
 /* Engine integration contract: local trusted estimator directly calls this
  * with a metric map-aligned position; no UI-generated pose or fake map path. */
 window.PAIVIN={acceptVerifiedPose(p){
