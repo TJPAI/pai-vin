@@ -62,6 +62,42 @@ const cross=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++)cross[y*W+x]=(x>=128)!==(y>=96)?220:20;
 assert.ok(V.cornerStrength(cross,W,H,128,96)>100,'intersection must be a corner');
 assert.ok(V.corners(cross,W,H,80).some(p=>Math.hypot(p.x-128,p.y-96)<7),'intersection must be selected');
+// Regression against the frozen V3.12 corner response: catch any index
+// transposition in the off-center gradient stencil.
+function legacyCorners(input,w=W,h=H,max=125){
+ const candidates=[];
+ for(let y=9;y<h-9;y+=3)for(let x=9;x<w-9;x+=3){
+  const i=y*w+x;
+  const dx=Math.abs(input[i+1]-input[i-1])+Math.abs(input[i+w+1]-input[i+w-1]);
+  const dy=Math.abs(input[i+w]-input[i-w])+Math.abs(input[i+w+1]-input[i-w+1]);
+  const score=Math.min(dx,dy);
+  if(score>48)candidates.push({x,y,score});
+ }
+ candidates.sort((a,b)=>b.score-a.score);
+ const cols=8,rows=6,cells=Array.from({length:cols*rows},()=>[]);
+ for(const p of candidates){
+  const cx=Math.min(cols-1,Math.floor(p.x*cols/w));
+  const cy=Math.min(rows-1,Math.floor(p.y*rows/h));
+  cells[cy*cols+cx].push(p);
+ }
+ const out=[],insert=p=>{
+  if(out.some(q=>(q.x-p.x)**2+(q.y-p.y)**2<100))return false;
+  out.push(p);return true;
+ };
+ for(const cell of cells){
+  for(const p of cell)if(insert(p))break;
+  if(out.length>=max)return out;
+ }
+ for(const p of candidates){
+  if(out.length>=max)break;
+  insert(p);
+ }
+ return out;
+}
+for(const sample of [image,pattern,shift(image,11,4),frac]){
+ const got=V.corners(sample,W,H,90),want=legacyCorners(sample,W,H,90);
+ assert.deepEqual(got,want,'corner detection must precisely match V3.12 baseline');
+}
 const tracker=new V.Tracker({maxTracks:85});
 const first=tracker.update(image,100);
 assert.ok(first.total>=35,JSON.stringify(first));
