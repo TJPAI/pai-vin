@@ -29,7 +29,9 @@ jobs:
           node --check vio-sensor-probe.js
           node --check vio-tracker.js
           node --check vio-initializer.js
-          node --check vio-rotation.js\n          node --check vio-geometry.js\n          node tests/vio-geometry.test.cjs
+          node --check vio-rotation.js
+          node --check vio-geometry.js
+          node tests/vio-geometry.test.cjs
           node --check vio-fusion.js
           node --check vio-observation.js
           node --check vio-vision-worker.js
