@@ -6,8 +6,9 @@
  const $=id=>document.getElementById(id);
  const canvas=document.createElement('canvas');canvas.width=VINFeatures.W;canvas.height=VINFeatures.H;
  const context=canvas.getContext('2d',{willReadFrequently:true});
- let graph=new VINLandmarks.Graph(),sketch=new VINPath.Sketch(),scanStream=null,scanTimer=null,recTimer=null,db=null;
- let scanBusy=false,recBusy=false,lastPlace=-1,confirmed=0,recognitions=[];
+ let graph=new VINLandmarks.Graph(),sketch=new VINPath.Sketch(),scanStream=null,scanTimer=null,voTimer=null,recTimer=null,db=null;
+ let scanBusy=false,voBusy=false,recBusy=false,lastPlace=-1,confirmed=0,recognitions=[];
+ let prevMotionPoints=null;let voChecks=0;const voReasons={};
  const say=(id,t)=>{if($(id))$(id).textContent=t};
  const buttons=()=>{if($('scanStart'))$('scanStart').disabled=!!scanStream;
   if($('scanStop'))$('scanStop').disabled=!scanStream};
@@ -42,22 +43,38 @@
  function showGraph(active=-1){
   VINLandmarks.render($('visualGraph'),graph,active);
   VINPath.render($('voCanvas'),sketch);
-  say('voScanStatus','可信相对运动段：'+(sketch.nodes.length-1)+'；不表示米制距离，丢失段不推算。');
+  const top=Object.entries(voReasons).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([k,v])=>k+': '+v).join('；');
+  say('voScanStatus','连续视觉检查 '+voChecks+' 次；可信运动段 '+(sketch.nodes.length-1)+'，未通过 '+sketch.rejected+'。'+(top?' 主要原因：'+top:'')+'。非米制轨迹。');
   if($('recognitionQuality')&&graph.frames.length===0)say('recognitionQuality','没有保存的视觉关键帧');
  }
+ // High-rate tracking uses consecutive camera samples, not sparse keyframes.
+ async function voTick(){
+  if(voBusy||!scanStream)return;
+  voBusy=true;
+  try{
+   const pts=frame($('scanCamera'));
+   if(!pts)return;
+   if(prevMotionPoints){
+    voChecks++;
+    const step=VINPath.parseStep(prevMotionPoints,pts,VINGeometry,VINVO);
+    if(step.ok)sketch.append(step);
+    else{sketch.rejected++;const key=step.reason||'unknown';voReasons[key]=(voReasons[key]||0)+1}
+    VINPath.render($('voCanvas'),sketch);
+    const top=Object.entries(voReasons).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([k,v])=>k+': '+v).join('；');
+    say('voScanStatus','连续视觉检查 '+voChecks+' 次；可信运动段 '+(sketch.nodes.length-1)+'，未通过 '+sketch.rejected+'。'+(top?'原因：'+top:'')+'。非米制轨迹。');
+   }
+   prevMotionPoints=pts;
+  }catch(e){say('voScanStatus','视觉运动检测异常：'+e.message)}
+  finally{voBusy=false}
+ }
  async function scanTick(){
-  if(scanBusy||!scanStream)return;
+  if(scanBusy||!scanStream||voBusy)return;
   scanBusy=true;
   try{
    const pts=frame($('scanCamera'));
    if(!pts)return;
    const r=graph.add(pts,Date.now());
    if(r.added){
-    if(graph.frames.length>=2){
-      const prev=graph.frames[graph.frames.length-2];
-      const step=VINPath.parseStep(prev.points,pts,VINGeometry,VINVO);
-      if(step.ok)sketch.append(step);else sketch.rejected++;
-    }
     showGraph(graph.frames.length-1);
     await save();
    }
@@ -82,14 +99,16 @@
    scanStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480}}});
    $('scanCamera').srcObject=scanStream;await $('scanCamera').play();
    buttons();say('scanStatus','摄像头已启动。扫描区域并回到起点，特征仅保存在本机。');
-   scanTick();scanTimer=setInterval(scanTick,1200);
+   prevMotionPoints=null;voChecks=0;Object.keys(voReasons).forEach(k=>delete voReasons[k]);
+   scanTick();scanTimer=setInterval(scanTick,1400);
+   voTimer=setInterval(voTick,450);
   }catch(e){
    if(scanStream)scanStream.getTracks().forEach(t=>t.stop());
    scanStream=null;buttons();say('scanStatus','摄像头启动失败：'+e.message);
   }
  }
  async function stopScan(){
-  clearInterval(scanTimer);scanTimer=null;
+  clearInterval(scanTimer);scanTimer=null;clearInterval(voTimer);voTimer=null;prevMotionPoints=null;
   if(scanStream)scanStream.getTracks().forEach(t=>t.stop());
   scanStream=null;$('scanCamera').srcObject=null;buttons();
   try{if(db)await save()}catch(e){say('scanStatus','保存失败：'+e.message);return}
@@ -98,7 +117,7 @@
  async function clear(){
   if(scanStream)return say('scanStatus','请先停止扫描');
   if(!confirm('确定清空已保存的视觉关键帧地图？'))return;
-  graph=new VINLandmarks.Graph();sketch=new VINPath.Sketch();recognitions=[];lastPlace=-1;confirmed=0;
+  graph=new VINLandmarks.Graph();sketch=new VINPath.Sketch();voChecks=0;Object.keys(voReasons).forEach(k=>delete voReasons[k]);recognitions=[];lastPlace=-1;confirmed=0;
   try{await transact('delete','current');showGraph();say('scanStatus','视觉地图已清空。')}
   catch(e){say('scanStatus','清空失败：'+e.message)}
  }
@@ -149,7 +168,7 @@
   $('scanExport').onclick=exportMap;$('scanClear').onclick=clear;
   showGraph();buttons();
   openDatabase().then(load).catch(e=>say('scanStatus','浏览器本地地图不可用：'+e.message));
-  window.addEventListener('pagehide',()=>{stopRecognize();if(scanStream)scanStream.getTracks().forEach(t=>t.stop())});
+  window.addEventListener('pagehide',()=>{stopRecognize();clearInterval(scanTimer);clearInterval(voTimer);if(scanStream)scanStream.getTracks().forEach(t=>t.stop())});
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
  root.VINScan={startRecognize,stopRecognize,getFrameCount:()=>graph.frames.length};
