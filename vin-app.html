@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0d1727"><meta name="description" content="PAI-VIN iPhone Safari A4 calibration and on-device visual-inertial acquisition">
-<link rel="manifest" href="./manifest.json"><title>PAI-VIN · V3.17 Alpha</title>
+<link rel="manifest" href="./manifest.json"><title>PAI-VIN · V3.18 Alpha</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#0d1727;color:#eaf3ff;font:15px -apple-system,BlinkMacSystemFont,sans-serif}main{max-width:680px;margin:auto;padding:16px 14px 56px}header{margin-bottom:16px}.app-version{display:inline-block;vertical-align:middle;font-size:14px;font-weight:700;line-height:1.3;color:#0d1727;background:#9ee7cf;border-radius:7px;padding:4px 8px;margin-left:5px;white-space:nowrap}h1{font-size:25px;margin:4px 0}h2{font-size:19px;margin:0 0 12px}h3{font-size:16px;margin:0 0 8px}
 p{line-height:1.55;margin:9px 0}small,.muted{color:#a8bdd5}.small{font-size:12.5px}section{background:#182941;border:1px solid #344b68;border-radius:16px;padding:15px;margin:13px 0}
@@ -12,7 +12,7 @@ canvas{width:100%;background:#102139;border-radius:10px}#boardCanvas{touch-actio
 .notice{border-left:3px solid #ffcb72;background:#29384b;border-radius:7px;padding:9px 12px;color:#f7dca5}.ok{color:#7ce4b2}
 a{color:#b2d5ff}[hidden]{display:none!important}
 </style></head><body><main>
-<header><h1>PAI-VIN <span id="appVersion" class="app-version" data-version="V3.17" data-build="v317-focal-candidate-20261103">V3.17 Alpha</span></h1>
+<header><h1>PAI-VIN <span id="appVersion" class="app-version" data-version="V3.18" data-build="v318-focal-model-fit-20261103">V3.18 Alpha</span></h1>
 <p class="muted">iPhone Safari / PWA · 连续视觉惯性 SLAM 开发</p>
 <p class="notice">当前实现 A4 平面参照、Web Worker 视觉特征跟踪、100 ms 取帧调度与逐帧质量诊断、静止 IMU 初始化和延迟配对的相机/IMU 观测质量检查。<b>尚无完整 VIO 位姿、米制二维地图或实时定位轨迹。</b></p></header>
 <section id="board">
@@ -24,6 +24,8 @@ a{color:#b2d5ff}[hidden]{display:none!important}
 <canvas id="boardCanvas" width="360" height="480" aria-label="A4 标定画面及角点"></canvas>
 <p class="small muted">检测失败可重新开启标定摄像头拍摄，不保存未验证的结果。</p>
 <p id="boardStatus" class="small muted" role="status">尚未标定</p>
+<p id="boardFocalStatus" class="small muted">等待多视角焦距诊断</p>
+<button type="button" class="alt" id="boardExport" style="width:100%">导出多视角角点与焦距诊断 JSON</button>
 <p class="small muted">单张照片完成 A4 平面参照。可自愿从不同倾斜角度重复拍摄约5张以估计初始焦距候选；该结果仍不是完整内参、相机—IMU 外参或全局尺度标定。</p>
 </section>
 <section id="vioDev"><h2>② 手机 VIO 数据采集、静止初始化和连续跟踪</h2>

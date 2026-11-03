@@ -5,6 +5,21 @@
 const $=id=>document.getElementById(id);
 let boardStream=null,snapshot=false,corners=[],result=null;
  const focalSamples=[];
+ const focalStatus=$('boardFocalStatus');
+ const focalSay=message=>{if(focalStatus)focalStatus.textContent=message};
+ let focalLastResult=null;
+ function exportFocal(){
+  const data={schema:'pai-vin-focal-capture-v1',appVersion:$('appVersion')?.dataset.version||'unknown',
+   recordedAt:new Date().toISOString(),imageWidth:snap.width,imageHeight:snap.height,
+   boardMarkerSpacingM:[.16,.247],samples:focalSamples.map(x=>x.corners.map(p=>p.slice())),
+   estimate:focalLastResult,containsPhotos:false,containsFrames:false,
+   warning:'Unverified constrained focal candidate; not full calibration or metric SLAM'};
+  const url=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
+  const a=document.createElement('a');a.href=url;a.download='pai-vin-focal-'+Date.now()+'.json';
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+ }
+ $('boardExport').onclick=exportFocal;
+ focalSay('本次会话已有0个视角；请从不同角度拍摄，同一视角不会重复计数。');
 const canvas=$('boardCanvas'),ctx=canvas.getContext('2d');
 const snap=document.createElement('canvas');snap.width=canvas.width;snap.height=canvas.height;
 const snapCtx=snap.getContext('2d');
@@ -62,11 +77,16 @@ $('boardSnap').onclick=()=>{
   const existing=focalSamples.some(p=>Math.sqrt(p.corners.reduce((a,v,i)=>a+(v[0]-corners[i][0])**2+(v[1]-corners[i][1])**2,0)/4)<12);
   if(!existing&&focalSamples.length<12)focalSamples.push({corners:corners.map(p=>p.slice())});
   const estimate=PAIVioFocal.estimate(focalSamples.map(p=>p.corners),w,h);
+  focalLastResult=estimate;
+  // Do not let an old candidate silently survive a new, invalid session.
+  localStorage.removeItem('pai-vin-focal-candidate-v1');
   if(estimate.ok){
    localStorage.setItem('pai-vin-focal-candidate-v1',JSON.stringify({...estimate,recordedAt:new Date().toISOString()}));
-   say('A4平面参照已保存；多视角焦距候选已求解：fx='+estimate.fx.toFixed(1)+' px。仅为未经验证的近似内参，不能启用VIO。');
+   focalSay('候选焦距 fx='+estimate.fx.toFixed(1)+'px · 模型内重投影 RMS '+estimate.reprojectionRmsPx.toFixed(2)+'px · 逐视角最大 '+estimate.maxViewReprojectionRmsPx.toFixed(2)+'px · 留一法波动 '+(100*estimate.leaveOneOutRelativeSpread).toFixed(1)+'%。此误差仅是同一组四角的模型拟合，不是独立验证，尚未标定畸变、外参与时间偏移。');
+   say('A4平面参照已保存；多视角焦距候选已产生，详情见下方诊断。尚不能启用VIO。');
   }else{
-   say('A4平面参照已保存；多视角内参样本 '+focalSamples.length+'/5（同一画面重复不会计数），'+estimate.reason+'。单张拍摄已满足平面参照需要。');
+   focalSay('多视角 '+focalSamples.length+'/5（最多12组）：'+estimate.reason+(existing?'。重复视角未计数。':'。请改变A4倾斜方向。')+'；可导出本次角点供分析。');
+   say('A4平面参照已保存；单张照片已完成平面参照，不等于内参标定。');
   }
  }catch(e){draw();say('自动标定未完成：'+e.message+'。请重新拍摄。')}
 };

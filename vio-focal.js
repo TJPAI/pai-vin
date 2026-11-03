@@ -41,6 +41,33 @@ function candidate(view,width,height){
  return {H,rows:rows.filter(r=>r.scale>1e-14).map(r=>({x:r.x/r.scale,y:r.y/r.scale})),
   tilt:Math.hypot(a[2],b[2])/(Math.sqrt(n1+n2)||1)};
 }
+// Project the same four markers through a constrained pinhole camera pose.
+// This is an in-sample model-fit residual, NOT independent reprojection QA:
+// four corners also determine each homography.
+function constrainedReprojection(view,H,f,cx,cy){
+ const vdot=(a,b)=>a.reduce((sum,x,i)=>sum+x*b[i],0);
+ const vn=a=>Math.hypot(...a);
+ const unit=a=>a.map(x=>x/vn(a));
+ const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+ const a=[(H[0]-cx*H[6])/f,(H[3]-cy*H[6])/f,H[6]];
+ const b=[(H[1]-cx*H[7])/f,(H[4]-cy*H[7])/f,H[7]];
+ const c=[(H[2]-cx*H[8])/f,(H[5]-cy*H[8])/f,H[8]];
+ const n1=vn(a),n2=vn(b),factor=(n1+n2)/2;
+ if(factor<1e-12)return null;
+ const r1=unit(a),parallel=vdot(r1,b);
+ const perp=b.map((x,i)=>x-parallel*r1[i]);
+ if(vn(perp)<1e-12)return null;
+ const r2=unit(perp),r3=cross(r1,r2),t=c.map(x=>x/factor);
+ if(r3[2]===undefined)return null;
+ let sum=0;
+ for(let i=0;i<4;i++){
+  const [x,y]=world[i],X=r1[0]*x+r2[0]*y+t[0],Y=r1[1]*x+r2[1]*y+t[1],Z=r1[2]*x+r2[2]*y+t[2];
+  if(Z<=0)return null;
+  const px=cx+f*X/Z,py=cy+f*Y/Z;
+  sum+=(px-view[i][0])**2+(py-view[i][1])**2;
+ }
+ return Math.sqrt(sum/4);
+}
 function estimate(views,width,height){
  if(!Number.isInteger(width)||!Number.isInteger(height)||width<100||height<100)
   return {ok:false,reason:'invalid_resolution'};
@@ -73,12 +100,19 @@ function estimate(views,width,height){
   loo.push(Math.sqrt(z));
  }
  const stability=Math.max(...loo.map(v=>Math.abs(v-f)/f));
- if(residual>.025||stability>.15)return {ok:false,reason:'multi_view_inconsistent',residual,leaveOneOutRelativeSpread:stability};
+ const perViewReprojectionRmsPx=good.map((v,i)=>constrainedReprojection(views[i],v.H,f,width/2,height/2));
+ if(perViewReprojectionRmsPx.some(x=>x===null||!Number.isFinite(x)))
+  return {ok:false,reason:'invalid_constrained_pose'};
+ const reprojectionRmsPx=Math.sqrt(perViewReprojectionRmsPx.reduce((sum,x)=>sum+x*x,0)/good.length);
+ const maxViewReprojectionRmsPx=Math.max(...perViewReprojectionRmsPx);
+ if(residual>.025||stability>.15||reprojectionRmsPx>2||maxViewReprojectionRmsPx>3)return {ok:false,reason:'multi_view_inconsistent',residual,leaveOneOutRelativeSpread:stability,reprojectionRmsPx,maxViewReprojectionRmsPx};
  return {ok:true,fx:f,fy:f,cx:width/2,cy:height/2,width,height,views:good.length,
   constraintRms:residual,leaveOneOutRelativeSpread:stability,
+  reprojectionRmsPx,maxViewReprojectionRmsPx,perViewReprojectionRmsPx,
+  reprojectionMeasurement:'same_four_markers_constrained_model_fit_not_independent',
   model:'pinhole_square_pixels_zero_skew_centered_principal_point',
   verified:false,distortionCalibrated:false,metricPoseAvailable:false,
   source:'multi_view_a4_constrained_candidate_only'};
 }
-return {estimate,homography,candidate};
+return {estimate,homography,candidate,constrainedReprojection};
 });

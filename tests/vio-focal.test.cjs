@@ -17,6 +17,10 @@ const views=angles.map((a,i)=>view(...a,-.08+(i%3)*.02,-.12+(i%2)*.01,.43+(i%3)*
 const k=F.estimate(views,W,H);
 assert.equal(k.ok,true,JSON.stringify(k));
 assert.ok(Math.abs(k.fx-fx)<1e-4,JSON.stringify(k));
+assert.ok(k.reprojectionRmsPx<1e-4,JSON.stringify(k));
+assert.ok(k.maxViewReprojectionRmsPx<1e-4,JSON.stringify(k));
+assert.equal(k.perViewReprojectionRmsPx.length,views.length);
+assert.equal(k.reprojectionMeasurement,'same_four_markers_constrained_model_fit_not_independent');
 assert.equal(k.verified,false);assert.equal(k.distortionCalibrated,false);assert.equal(k.metricPoseAvailable,false);
 assert.equal(F.estimate(views.slice(0,1),W,H).reason,'need_five_views');
 assert.equal(F.estimate(views,0,H).reason,'invalid_resolution');
