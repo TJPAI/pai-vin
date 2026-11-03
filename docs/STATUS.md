@@ -1,11 +1,11 @@
-# PAI-VIN V3.5 — 2026-11-03
+# PAI-VIN V3.7 — 2026-11-03
 
-Active browser build contains the one-photo four-fiducial A4 detector, a stable-ID sparse feature tracker, browser camera/IMU stream, stationary gyro bias/gravity initialization, and gyro-only orientation propagation.
+V3.7 targets two P0 problems diagnosed from real iPhone V3.6 JSON: 16/194 visual rotation accepted, 106 insufficient tracks, 72 rotation geometry unreliable, and 0 visually accepted windows with a valid IMU bracket. Observed IMU rate ~51 Hz, camera reads ~9.93 Hz, and 360 duplicate/reordered receipt timestamps.
 
-New V3.5 modules: `vio-rotation.js` estimates robust relative CAMERA rotation from matched stable-ID features when validated camera intrinsics are provided; `vio-fusion.js` conditionally corrects the gyro attitude using this relative rotation only when all calibration flags (intrinsics, camera–IMU extrinsics, temporal offset) are verified. Synthetic geometry, corruption/rejection and calibrated orientation correction tests run in Pages CI.
+Implemented:
+- `vio-sensor-core.js`: strict bracketing IMU samples and interpolation at start and end of frame observation window, reject large internal gaps, separately count duplicate and reordered event timestamps. These are browser receipt timestamps and **do not** provide physical camera exposure synchronization.
+- `vio-sensor-probe.js`: defer vision/IMU comparison until the post-frame IMU event has arrived; export per-window reasons, count valid IMU windows and truly paired valid observations. Sensor capture listener avoids heavy visual processing.
+- `vio-tracker.js`: shared three-level pyramid with a quarter-resolution search for larger inter-frame movement; retain backward matching consistency and fail-closed rejects.
+- Regression tests: interpolated frame bracketing, missing first/last events and IMU data gaps; translated image tracking with larger displacement.
 
-The live Safari app has **NOT enabled visual IMU correction**: intrinsics/extrinsics/time offset have not been measured on the target iPhone. The new modules are shipped and tested but not connected to live pose output. No complete VIO state estimator or metric trajectory exists.
-
-Next: obtain defensible camera intrinsics/extrinsics/time offset on-device; then apply visual observation corrections to an IMU state with covariance, initialize translation and local 3D features, then mapping / loop closure. Never draw arbitrary normalised-step or metric positions prior to successful validation.
-
-Historical modules remain archived under `archive/legacy-v3-1-experiments-20261103`.
+This release is NOT a working visual-inertial pose estimator; it does not claim measured phone performance improvement, corrected camera time offset, or metric SLAM. Next gate is a fresh iPhone diagnostic comparing genuinely paired sample counts, visual track lifespan, and CPU throughput before any full calibration.
