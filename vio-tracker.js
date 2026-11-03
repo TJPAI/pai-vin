@@ -100,14 +100,24 @@ function trackOne(prev,now,p,opts={}){
  const subpixel=opts.subpixel===false?null:refineLK(prev,now,w,h,p.x,p.y,fwd.x,fwd.y);
  return {x:subpixel?.x??fwd.x,y:subpixel?.y??fwd.y,error:fwd.error,fbError:Math.hypot(back.x-ax,back.y-ay)};
 }
+// Shi-Tomasi minimum eigenvalue of the 3x3 structure tensor:
+// unlike 1D gradient scores, it rejects single-direction edges.
+function cornerStrength(gray,w,h,x,y){
+ if(x<3||y<3||x>=w-3||y>=h-3)return 0;
+ let xx=0,xy=0,yy=0;
+ for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){
+  const k=(y+j)*w+x+i;
+  const gx=(gray[k+1]-gray[k-1])*.5,gy=(gray[k+w]-gray[k-w])*.5;
+  xx+=gx*gx;xy+=gx*gy;yy+=gy*gy;
+ }
+ xx/=9;xy/=9;yy/=9;
+ return (xx+yy-Math.sqrt((xx-yy)*(xx-yy)+4*xy*xy))*.5;
+}
 function corners(gray,w=W,h=H,max=125){
  const arr=[];
  for(let y=9;y<h-9;y+=3)for(let x=9;x<w-9;x+=3){
-  const i=y*w+x;
-  const dx=Math.abs(gray[i+1]-gray[i-1])+Math.abs(gray[i+w+1]-gray[i+w-1]);
-  const dy=Math.abs(gray[i+w]-gray[i-w])+Math.abs(gray[i+w+1]-gray[i-w+1]);
-  const c=Math.min(dx,dy);
-  if(c>48)arr.push({x,y,score:c});
+  const c=cornerStrength(gray,w,h,x,y);
+  if(c>24)arr.push({x,y,score:c});
  }
  arr.sort((a,b)=>b.score-a.score);
  // Preserve coverage across the image instead of allowing a textured wall
@@ -177,5 +187,5 @@ class Tracker{
  }
  reset(){this.frame=null;this.tracks=[];this.nextId=1;this.frameCount=0;this.trackTotal=0;this.last=null}
 }
-return {Tracker,corners,trackOne,down,score,refineLK,bilinear};
+return {Tracker,corners,cornerStrength,trackOne,down,score,refineLK,bilinear};
 });

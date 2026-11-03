@@ -54,6 +54,14 @@ estimates.sort((a,b)=>a-b);
 assert.ok(estimates[estimates.length>>1]<.32,'median KLT subpixel error must be below 0.32 px');
 const flatLK=new Uint8Array(W*H).fill(127);
 assert.equal(V.refineLK(flatLK,flatLK,W,H,80,80,80,80),null,'degenerate image gradients rejected');
+// Corner structure tensor: accept a 2D intersection, reject a straight edge.
+const edge=new Uint8Array(W*H);
+for(let y=0;y<H;y++)for(let x=0;x<W;x++)edge[y*W+x]=x<128?40:210;
+assert.ok(V.cornerStrength(edge,W,H,128,96)<1,'straight edge must not be a corner');
+const cross=new Uint8Array(W*H);
+for(let y=0;y<H;y++)for(let x=0;x<W;x++)cross[y*W+x]=(x>=128)!==(y>=96)?220:20;
+assert.ok(V.cornerStrength(cross,W,H,128,96)>100,'intersection must be a corner');
+assert.ok(V.corners(cross,W,H,80).some(p=>Math.hypot(p.x-128,p.y-96)<7),'intersection must be selected');
 const tracker=new V.Tracker({maxTracks:85});
 const first=tracker.update(image,100);
 assert.ok(first.total>=35,JSON.stringify(first));
