@@ -56,7 +56,7 @@ function estimate(views,width,height){
  const good=views.map(v=>candidate(v,width,height));
  if(good.some(v=>!v))return {ok:false,reason:'invalid_view'};
  const rows=good.flatMap(v=>v.rows),den=rows.reduce((s,r)=>s+r.x*r.x,0);
- if(den<1e-8)return {ok:false,reason:'insufficient_perspective_diversity'};
+ if(den<1e-16)return {ok:false,reason:'insufficient_perspective_diversity'};
  const f2=rows.reduce((s,r)=>s+r.x*r.y,0)/den;
  const f=Math.sqrt(f2);
  if(!Number.isFinite(f)||f<.35*Math.max(width,height)||f>5*Math.max(width,height))
@@ -67,7 +67,7 @@ function estimate(views,width,height){
  for(let skip=0;skip<good.length;skip++){
   const rr=good.filter((_,i)=>i!==skip).flatMap(v=>v.rows);
   const d=rr.reduce((s,r)=>s+r.x*r.x,0);
-  if(d<1e-8)return {ok:false,reason:'insufficient_perspective_diversity'};
+  if(d<1e-16)return {ok:false,reason:'insufficient_perspective_diversity'};
   const z=rr.reduce((s,r)=>s+r.x*r.y,0)/d;
   if(z<=0)return {ok:false,reason:'unstable_focal_estimate'};
   loo.push(Math.sqrt(z));
