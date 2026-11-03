@@ -45,6 +45,7 @@ jobs:
           node --check vin-vo-path.js
           node tests/vin-vo-path.test.cjs
           grep -q 'frameChange(prevMotionFrame.gray,now.gray)' vin-scan.js
+          grep -q 'motionAnchor.points,now.points' vin-scan.js
           node tests/vin-a4-board.test.cjs
           test -s vin-app.html
           grep -q 'vin-app.html' index.html
