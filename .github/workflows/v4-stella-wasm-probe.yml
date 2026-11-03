@@ -149,6 +149,59 @@ jobs:
           else
             echo 'Next dependency blocker follows; see artifact log.' >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Fifth probe - cross-compile minimal OpenCV 4.8.1 for WASM
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p probe-results
+          echo 'Attempting a REAL OpenCV Emscripten static build. No host OpenCV libraries are used.' >> "$GITHUB_STEP_SUMMARY"
+          git clone --depth 1 --branch 4.8.1 https://github.com/opencv/opencv.git /tmp/pai-opencv-src
+          set +e
+          timeout 180s emcmake cmake -S /tmp/pai-opencv-src -B /tmp/pai-opencv-build \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/tmp/pai-wasm-prefix \
+            -DBUILD_SHARED_LIBS=OFF -DBUILD_LIST=core,imgproc,imgcodecs,features2d,calib3d,videoio,highgui \
+            -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_EXAMPLES=OFF \
+            -DBUILD_opencv_apps=OFF -DBUILD_JAVA=OFF -DBUILD_opencv_python2=OFF -DBUILD_opencv_python3=OFF \
+            -DWITH_OPENMP=OFF -DWITH_PTHREADS_PF=OFF -DWITH_TBB=OFF -DWITH_IPP=OFF -DWITH_ITT=OFF \
+            -DWITH_FFMPEG=OFF -DWITH_GSTREAMER=OFF -DWITH_GTK=OFF -DWITH_QT=OFF \
+            -DWITH_OPENEXR=OFF -DWITH_JPEG=OFF -DWITH_PNG=OFF -DWITH_TIFF=OFF -DWITH_WEBP=OFF \
+            -DWITH_1394=OFF -DWITH_V4L=OFF -DWITH_OPENCL=OFF \
+            > probe-results/opencv-wasm-configure.log 2>&1
+          cfg_code=$?
+          echo "$cfg_code" > probe-results/opencv-configure-exit-code.txt
+          if [ "$cfg_code" -ne 0 ]; then
+            echo "OpenCV WASM configure BLOCKED (code $cfg_code)" >> "$GITHUB_STEP_SUMMARY"
+            tail -n 70 probe-results/opencv-wasm-configure.log
+          else
+            echo 'OpenCV WASM configure PASS; attempting source build' >> "$GITHUB_STEP_SUMMARY"
+            timeout 480s emmake cmake --build /tmp/pai-opencv-build -j2 \
+              > probe-results/opencv-wasm-build.log 2>&1
+            build_code=$?
+            echo "$build_code" > probe-results/opencv-build-exit-code.txt
+            if [ "$build_code" -eq 0 ]; then
+              emmake cmake --install /tmp/pai-opencv-build >> probe-results/opencv-wasm-build.log 2>&1
+              build_code=$?
+            fi
+            if [ "$build_code" -eq 0 ]; then
+              echo 'OpenCV WASM static library build PASS; attempting stella configure' >> "$GITHUB_STEP_SUMMARY"
+              timeout 150s emcmake cmake -S /tmp/stella-vslam -B /tmp/stella-vslam/build-wasm-opencv \
+                -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DUSE_ARUCO=OFF -DUSE_CCACHE=OFF \
+                -DEIGEN3_INCLUDE_DIR=/usr/include/eigen3 \
+                -DCMAKE_PREFIX_PATH=/tmp/pai-wasm-prefix \
+                -Dyaml-cpp_DIR=/tmp/pai-wasm-prefix/lib/cmake/yaml-cpp \
+                -DOpenCV_DIR=/tmp/pai-wasm-prefix/lib/cmake/opencv4 \
+                -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH -DCMAKE_BUILD_TYPE=Release \
+                > probe-results/stella-opencv-configure.log 2>&1
+              stella_code=$?
+              echo "$stella_code" > probe-results/stella-opencv-configure-exit-code.txt
+              echo "With WASM OpenCV: stella CMake configure exit $stella_code (NOT a complete SLAM build)" >> "$GITHUB_STEP_SUMMARY"
+              tail -n 55 probe-results/stella-opencv-configure.log
+            else
+              echo "OpenCV WASM compile BLOCKED (code $build_code)" >> "$GITHUB_STEP_SUMMARY"
+              tail -n 90 probe-results/opencv-wasm-build.log
+            fi
+          fi
+          set -e
       - name: Save configure evidence (including blockers)
         uses: actions/upload-artifact@v4
         with:
