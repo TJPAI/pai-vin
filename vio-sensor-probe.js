@@ -45,6 +45,7 @@
  async function start(){
   if(stream)return;
   buffer.reset();tracker.reset();framesSeen=0;lastTrackingTime=-Infinity;lastTrackingReport=null;
+  if(window.PAIVIN?.stopBoardCamera)window.PAIVIN.stopBoardCamera();
   try{
    if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){
     const p=await DeviceMotionEvent.requestPermission();
