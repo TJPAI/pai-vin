@@ -23,7 +23,7 @@
   if(obs.ok)visualAccepted++;else{visualRejected++;visualReasons[obs.reason]=(visualReasons[obs.reason]||0)+1}
   if(obs.imuWindowOk)syncPassed++;else syncFailed++;
   if(obs.ok&&obs.imuWindowOk)pairedPassed++;
-  visualHistory.push({t,reason:obs.reason,matchCount:obs.visualMatchCount,inliers:obs.visualInliers,
+  visualHistory.push({t,reason:obs.reason,detail:obs.geometryFailureDetail,flow:obs.flowDiagnostic,matchCount:obs.visualMatchCount,inliers:obs.visualInliers,
    ratio:obs.visualInlierRatio,cameraAngleDeg:obs.cameraRelativeAngleDeg,
    imuAngleDeg:obs.imuAngularMagnitudeDeg,imuOk:obs.imuWindowOk,
    imuReason:obs.imuWindowReason,dtMs:obs.dtMs});
@@ -41,7 +41,7 @@
    try{
     const obs=PAIVioObserve.assess({tracks:p.tracks,
      previousTime:p.start,currentTime:p.end,sensorBuffer:buffer,rotationEstimator:PAIVioRotation,
-     visualOverride:p.vision});
+     visualOverride:p.vision,flowOverride:p.flow});
     storeObservation(obs,p.end);
    }catch(e){
     storeObservation({ok:false,reason:'visual_observation_exception',visualMatchCount:0,
@@ -61,11 +61,13 @@
    const names={insufficient_tracks:'连续特征不足',rotation_geometry_unreliable:'旋转几何不一致',
     invalid_frame_timing:'帧时间异常',intrinsics_missing:'相机参数缺失',
     rotation_jump:'旋转估计跳变',visual_observation_exception:'观测模块异常'};
+   const details={too_few_rotation_inliers:'纯旋转模型内点不足',low_rotation_inlier_ratio:'纯旋转模型内点比例低',high_rotation_residual:'纯旋转模型残差偏大'};
+   const flowInfo=last?.flowDiagnostic?.count>0?' · 2D光流中值 '+last.flowDiagnostic.flowMedianPx+' px、离散度 '+last.flowDiagnostic.flowResidualMedianPx+' px':'';
    const recent=last?.ok?'视觉旋转 '+last.cameraRelativeAngleDeg.toFixed(2)+'°，内点 '+last.visualInliers+'/'+last.visualMatchCount:
-    (last?'视觉观测暂不可用：'+(names[last.reason]||last.reason)+'，匹配 '+last.visualMatchCount:'等待连续视觉帧');
+    (last?'视觉观测暂不可用：'+(details[last.geometryFailureDetail]||names[last.reason]||last.reason)+'，匹配 '+last.visualMatchCount:'等待连续视觉帧');
    fusionStatus.textContent='实时视觉观测：'+recent+'；本次通过 '+visualAccepted+' 次，未通过 '+visualRejected+' 次。'+
     ' 已完成 IMU 时间配对 '+syncPassed+' 次，真正双有效 '+pairedPassed+' 次。'+
-    ' IMU 数据窗口：'+(last?last.imuWindowOk?'可用':'不可用 ('+last.imuWindowReason+')':'等待')+
+    flowInfo+' IMU 数据窗口：'+(last?last.imuWindowOk?'可用':'不可用 ('+last.imuWindowReason+')':'等待')+
     '。采用未标定名义焦距，仅作诊断，不进行姿态融合或位置输出。';
   }
   const sensor=$('vioInitStatus');
@@ -92,7 +94,7 @@
   if(trackHistory.length>200)trackHistory.shift();
   if(m.start!==null){
    pendingObservations.push({start:m.start,end:m.end,receivedAt:performance.now(),
-    tracks:{matches:[]},vision:m.vision});
+    tracks:{matches:[]},vision:m.vision,flow:m.flow});
   }
   flushObservations();
   const ctx=$('vioTrackCanvas').getContext('2d');
