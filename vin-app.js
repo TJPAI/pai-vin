@@ -4,6 +4,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 let boardStream=null,snapshot=false,corners=[],result=null;
+ const focalSamples=[];
 const canvas=$('boardCanvas'),ctx=canvas.getContext('2d');
 const snap=document.createElement('canvas');snap.width=canvas.width;snap.height=canvas.height;
 const snapCtx=snap.getContext('2d');
@@ -57,7 +58,16 @@ $('boardSnap').onclick=()=>{
    ...result,recordedAt:new Date().toISOString(),autoDetected:true,
    detectedMarkerCount:4,detector:detected.method
   }));
-  say('自动识别四角并保存 A4 平面参照成功；无需手动点选。此结果不是 SLAM 全局尺度标定。');
+  // Multi-view candidate: no image is stored. Require varied perspectives.
+  const existing=focalSamples.some(p=>Math.sqrt(p.corners.reduce((a,v,i)=>a+(v[0]-corners[i][0])**2+(v[1]-corners[i][1])**2,0)/4)<12);
+  if(!existing&&focalSamples.length<12)focalSamples.push({corners:corners.map(p=>p.slice())});
+  const estimate=PAIVioFocal.estimate(focalSamples.map(p=>p.corners),w,h);
+  if(estimate.ok){
+   localStorage.setItem('pai-vin-focal-candidate-v1',JSON.stringify({...estimate,recordedAt:new Date().toISOString()}));
+   say('A4平面参照已保存；多视角焦距候选已求解：fx='+estimate.fx.toFixed(1)+' px。仅为未经验证的近似内参，不能启用VIO。');
+  }else{
+   say('A4平面参照已保存；多视角内参样本 '+focalSamples.length+'/5（同一画面重复不会计数），'+estimate.reason+'。单张拍摄已满足平面参照需要。');
+  }
  }catch(e){draw();say('自动标定未完成：'+e.message+'。请重新拍摄。')}
 };
 try{
