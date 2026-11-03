@@ -100,6 +100,8 @@ function trackOne(prev,now,p,opts={}){
  if(!pixels(prev,w,h,Math.round(p.x),Math.round(p.y)))return null;
  const aSmall=opts.prevSmall||down(prev,w,h),bSmall=opts.nowSmall||down(now,w,h);
  const ax=Math.round(p.x),ay=Math.round(p.y),x=ax>>1,y=ay>>1;
+ const prior=opts.predictionOffset;
+ const predX=Array.isArray(prior)?ax+prior[0]:ax,predY=Array.isArray(prior)?ay+prior[1]:ay;
  // Three-level tracking: accommodate larger genuine inter-frame motion
  // while retaining full-resolution forward-backward validation.
  const aQuarter=opts.prevQuarter||down(aSmall,w>>1,h>>1);
@@ -108,16 +110,16 @@ function trackOne(prev,now,p,opts={}){
  const halfFromQuarter=Number.isFinite(q.error)?
   nearest(aSmall,bSmall,w>>1,h>>1,x,y,2*q.x,2*q.y,opts.halfSearch??3):
   {error:Infinity};
- const halfDirect=nearest(aSmall,bSmall,w>>1,h>>1,x,y,x,y,opts.coarseSearch??6);
+ const halfDirect=nearest(aSmall,bSmall,w>>1,h>>1,x,y,predX/2,predY/2,opts.coarseSearch??6);
  const rough=halfFromQuarter.error<=halfDirect.error?halfFromQuarter:halfDirect;
  let fwd;
  if(opts.pairedSearch===false){
   const coarse=nearest(prev,now,w,h,ax,ay,2*rough.x,2*rough.y,opts.fineSearch??3);
-  const local=nearest(prev,now,w,h,ax,ay,ax,ay,opts.localSearch??6);
+  const local=nearest(prev,now,w,h,ax,ay,predX,predY,opts.localSearch??6);
   fwd=local.error<=coarse.error?local:coarse;
  }else{
   fwd=pairedNearest(prev,now,w,h,ax,ay,2*rough.x,2*rough.y,opts.fineSearch??3,
-   ax,ay,opts.localSearch??6,opts.stats);
+   predX,predY,opts.localSearch??6,opts.stats);
  }
  if(!Number.isFinite(fwd.error)||fwd.error>(opts.maxError??360))return null;
  const back=nearest(now,prev,w,h,fwd.x,fwd.y,ax,ay,opts.backwardSearch??5);
@@ -171,6 +173,17 @@ function corners(gray,w=W,h=H,max=125){
  }
  return out;
 }
+function motionPrior(tracks){
+ if(tracks.length<8)return null;
+ const med=arr=>{const a=arr.slice().sort((x,y)=>x-y);return a[Math.floor(a.length/2)]};
+ const dx=med(tracks.map(p=>p.dx)),dy=med(tracks.map(p=>p.dy));
+ const disp=Math.hypot(dx,dy);
+ if(disp<1.5||disp>24)return null;
+ const errs=tracks.map(p=>Math.hypot(p.dx-dx,p.dy-dy));
+ const mad=med(errs),inliers=errs.filter(v=>v<Math.max(2,2.5*mad)).length;
+ if(inliers/tracks.length<.7||mad>3)return null;
+ return {dx,dy,inliers,medianResidual:mad};
+}
 class Tracker{
  constructor({maxTracks=100,w=W,h=H}={}){
   this.w=w;this.h=h;this.maxTracks=maxTracks;this.frame=null;this.tracks=[];
@@ -181,18 +194,36 @@ class Tracker{
    throw Error('invalid grayscale frame or timestamp');
   if(this.last&&t<=this.last.timestamp)throw Error('non-monotonic frame timestamp');
   const prev=this.frame,old=this.tracks,initial=old.length;
-  let current=[],failed=0,errs=[];
+  let current=[],failed=0,errs=[],recoveryAttempts=0,recovered=0,motion=null;
   if(prev){
    const prevSmall=down(prev,this.w,this.h),nowSmall=down(gray,this.w,this.h);
    const opts={w:this.w,h:this.h,prevSmall,nowSmall,
     prevQuarter:down(prevSmall,this.w>>1,this.h>>1),nowQuarter:down(nowSmall,this.w>>1,this.h>>1)};
+   const misses=[];
    for(const p of old){
     const q=trackOne(prev,gray,p,opts);
     if(q&&current.every(k=>(k.x-q.x)**2+(k.y-q.y)**2>=36)){
      current.push({...p,x:q.x,y:q.y,age:p.age+1,dx:q.x-p.x,dy:q.y-p.y});
      errs.push(q.error);
-    }else failed++;
+    }else misses.push(p);
    }
+   // A second attempt is allowed only when successful tracks agree on motion.
+   // It still requires SSD and reverse validation, never fabricates stable IDs.
+   if(misses.length>=8&&current.length>=8&&current.length<old.length*.45){
+    motion=motionPrior(current);
+    if(motion){
+     const retry={...opts,predictionOffset:[motion.dx,motion.dy]};
+     for(const p of misses.slice(0,30)){
+      recoveryAttempts++;
+      const q=trackOne(prev,gray,p,retry);
+      if(q&&current.every(k=>(k.x-q.x)**2+(k.y-q.y)**2>=36)){
+       current.push({...p,x:q.x,y:q.y,age:p.age+1,dx:q.x-p.x,dy:q.y-p.y});
+       errs.push(q.error);recovered++;
+      }
+     }
+    }
+   }
+   failed=old.length-current.length;
   }
   const retained=current.length,newCountBefore=current.length;
   if(current.length<this.maxTracks*.75){
@@ -206,6 +237,7 @@ class Tracker{
   this.tracks=current;this.frame=gray.slice();this.frameCount++;
   const result={timestamp:t,frame:this.frameCount,total:current.length,retained,initial,added:current.length-newCountBefore,
     lost:failed,retention:initial?retained/initial:null,
+    recoveryAttempts,recovered,recoveryPrior:motion?{dx:motion.dx,dy:motion.dy,inliers:motion.inliers}:null,
     avgAge:current.length?current.reduce((s,p)=>s+p.age,0)/current.length:0,
     longLived:current.filter(p=>p.age>=5).length,
     medianError:errs.length?errs.sort((a,b)=>a-b)[errs.length>>1]:null,
@@ -215,5 +247,5 @@ class Tracker{
  }
  reset(){this.frame=null;this.tracks=[];this.nextId=1;this.frameCount=0;this.trackTotal=0;this.last=null}
 }
-return {Tracker,corners,cornerStrength,trackOne,pairedNearest,down,score,refineLK,bilinear};
+return {Tracker,corners,cornerStrength,trackOne,pairedNearest,down,score,refineLK,bilinear,motionPrior};
 });

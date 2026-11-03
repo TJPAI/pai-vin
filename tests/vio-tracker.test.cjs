@@ -126,6 +126,15 @@ const sameWindow=V.pairedNearest(image,image,W,H,128,96,128,96,3,128,96,6,stats)
 assert.deepEqual(sameWindow,{x:128,y:96,error:0});
 assert.equal(stats.ssdCalls,169,'13x13 union avoids double-evaluating 7x7 overlap');
 assert.ok(1-stats.ssdCalls/(169+49)>.2,'overlap should save >20% SSD evaluations');
+assert.equal(V.motionPrior(Array(12).fill({dx:0,dy:0})),null);
+const coherent=Array.from({length:12},(_,i)=>({dx:8+(i%3-1)*.2,dy:4+(i%4-1)*.2}));
+assert.ok(V.motionPrior(coherent),'coherent image translation should generate recovery prior');
+const incoherent=Array.from({length:12},(_,i)=>({dx:(i%2?1:-1)*16,dy:(i%3?1:-1)*9}));
+assert.equal(V.motionPrior(incoherent),null,'ambiguous motion must not generate prior');
+const fallbackOpts={w:W,h:H,subpixel:false,predictionOffset:[14,6]};
+const recheck=V.trackOne(image,shift(image,14,6),{x:90,y:90},fallbackOpts);
+assert.ok(recheck&&Math.abs(recheck.x-104)<=1&&Math.abs(recheck.y-96)<=1,
+ 'prediction-assisted match still requires accurate forward/backward consistency');
 const tracker=new V.Tracker({maxTracks:85});
 const first=tracker.update(image,100);
 assert.ok(first.total>=35,JSON.stringify(first));
@@ -136,6 +145,7 @@ for(let i=1;i<=5;i++){
  assert.ok(r.retained>=12,JSON.stringify(r));
  assert.ok(r.retention>.2,JSON.stringify(r));
  assert.equal(r.metricPoseKnown,false);
+ assert.ok(r.recovered>=0&&r.recoveryAttempts>=r.recovered);
  assert.equal(r.slamInitialized,false);
  const matches=r.matches.filter(p=>p.age>=2);
  assert.ok(matches.length>=12,JSON.stringify(r));

@@ -24,6 +24,7 @@ const two=answers.at(-1);
 assert.equal(two.type,'result',JSON.stringify(two));
 assert.equal(two.start,100);assert.equal(two.end,300);
 assert.ok(two.tracks.retained>=10,JSON.stringify(two));
+assert.ok(Number.isInteger(two.tracks.recoveryAttempts)&&Number.isInteger(two.tracks.recovered));
 assert.ok(two.vision&&typeof two.vision.ok==='boolean');
 assert.ok(Number.isFinite(two.processingMs));
 assert.ok(two.stageTiming&&['trackingMs','rotationMs','geometryMs'].every(x=>Number.isFinite(two.stageTiming[x])),'worker must report stage timings');

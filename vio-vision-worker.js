@@ -36,6 +36,7 @@ self.onmessage=(e)=>{
    stageTiming:{trackingMs,rotationMs,geometryMs},
    tracks:{total:current.total,initial:current.initial,retained:current.retained,added:current.added,retention:current.retention,longLived:current.longLived,
     lost:current.lost,avgAge:current.avgAge,medianError:current.medianError,
+    recoveryAttempts:current.recoveryAttempts,recovered:current.recovered,recoveryPrior:current.recoveryPrior,
     matchCount:current.matches.length},trackPoints,vision,flow,epipolar});
  }catch(error){
   postMessage({type:'error',session:m.session,seq:m.seq,message:String(error?.message||error)});

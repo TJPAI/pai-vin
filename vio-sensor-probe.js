@@ -80,7 +80,7 @@
   const win=(last&&first&&last.t>first.t)?buffer.between(Math.max(first.t,last.t-1000),last.t):{ok:false,reason:'need_frames'};
   $('vioNumbers').textContent='处理帧 '+r.cameraFrames+' · IMU '+r.imuSamples+' · 视觉帧率 '+r.cameraRateHz.toFixed(1)+' Hz · IMU '+r.imuRateHz.toFixed(1)+' Hz · Worker 处理 '+workerProcessed+' 帧 / 跳过 '+workerSkipped+' 帧 · 视觉耗时 '+(workerCostMs===null?'—':workerCostMs.toFixed(0)+' ms')+' · IMU窗口 '+(win.ok?'可用':'不可用 '+win.reason);
   const q=lastTrackingReport;
-  $('vioTrackNumbers').textContent=q?'图像跟踪点 '+q.total+' · 连续继承 '+q.retained+' · 5帧以上 '+q.longLived+' · 丢失 '+q.lost+' · 平均寿命 '+q.avgAge.toFixed(1)+' 帧':'尚未获得连续视觉特征';
+  $('vioTrackNumbers').textContent=q?'图像跟踪点 '+q.total+' · 连续继承 '+q.retained+' · 5帧以上 '+q.longLived+' · 丢失 '+q.lost+' · 平均寿命 '+q.avgAge.toFixed(1)+' 帧 · 运动辅助恢复 '+(q.recovered||0)+'/'+(q.recoveryAttempts||0):'尚未获得连续视觉特征';
   const fusionStatus=$('vioFusionStatus');
   if(fusionStatus){
    const last=lastVisual;
@@ -122,6 +122,7 @@
   trackHistory.push({t:m.end,frameGapMs:m.start===null?null:m.end-m.start,
    tracks:m.tracks.total,retained:m.tracks.retained,added:m.tracks.added,
    lost:m.tracks.lost,retention:m.tracks.retention,longLived:m.tracks.longLived,
+   recoveryAttempts:m.tracks.recoveryAttempts,recovered:m.tracks.recovered,recoveryPrior:m.tracks.recoveryPrior,
    visualMatches:m.tracks.matchCount,medianPatchError:m.tracks.medianError,
    workerProcessingMs:m.processingMs,
    stageTiming:m.stageTiming||null});
