@@ -16,6 +16,10 @@
  let syncPassed=0,syncFailed=0,pairedPassed=0;
  let preintPassed=0,preintFailed=0,lastPreintegration=null;
  let visualAccepted=0,visualRejected=0;
+ const calibrationStatus=()=>{
+  let plane=null;try{plane=JSON.parse(localStorage.getItem('pai-vin-a4-plane-v1')||'null');}catch(e){}
+  return PAIVioCalibration.fromBrowser({a4:plane,exposureTimestampAvailable:false});
+ };
  let stream=null,timer=null,listener=null,framesSeen=0;
  let initializer=null,attitude=null,initAttemptAt=-Infinity,initReason='等待静止初始化';
  const show=s=>{$('vioStatus').textContent=s};
@@ -56,6 +60,10 @@
   }
  }
  function report(){
+  const readiness=calibrationStatus();
+  const el=$('vioCalibrationStatus');
+  if(el)el.textContent='联合估计标定检查：'+(readiness.a4PlaneAvailable?'A4 平面参照已保存；':'A4 平面参照未提供；')+
+   '相机内参、相机—IMU 外参与真实曝光时间偏移均未验证，视觉惯性位置融合保持关闭。';
   const r=buffer.report(),last=buffer.frames.at(-1),first=buffer.frames[0];
   const win=(last&&first&&last.t>first.t)?buffer.between(Math.max(first.t,last.t-1000),last.t):{ok:false,reason:'need_frames'};
   $('vioNumbers').textContent='处理帧 '+r.cameraFrames+' · IMU '+r.imuSamples+' · 视觉帧率 '+r.cameraRateHz.toFixed(1)+' Hz · IMU '+r.imuRateHz.toFixed(1)+' Hz · Worker 处理 '+workerProcessed+' 帧 / 跳过 '+workerSkipped+' 帧 · 视觉耗时 '+(workerCostMs===null?'—':workerCostMs.toFixed(0)+' ms')+' · IMU窗口 '+(win.ok?'可用':'不可用 '+win.reason);
@@ -196,6 +204,7 @@
   const data={schema:'pai-vin-vio-acquisition-v1',appVersion:document.getElementById('appVersion')?.dataset.version||'unknown',buildId:document.getElementById('appVersion')?.dataset.build||'unknown',capturedAt:new Date().toISOString(),browserClock:'performance.now',
    cameraExposureTimestampAvailable:false,deviceIMUExtrinsicsCalibrated:false,wasmVioEstimatorConnected:false,
    visualRotationModuleAvailable:true,visualAttitudeCorrectionEnabled:false,
+   calibrationReadiness:calibrationStatus(),
    imuPreintegrationDiagnostic:{passed:preintPassed,failed:preintFailed,last:lastPreintegration,
     gravityCompensated:false,metricPoseAvailable:false,usesBrowserReceiptTimestamps:true},
    twoViewEpipolarDiagnostic:{accepted:epipolarAccepted,rejected:epipolarRejected,last:lastEpipolar,metricPoseAvailable:false},
