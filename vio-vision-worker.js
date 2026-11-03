@@ -3,14 +3,15 @@
  * rotation. The main thread only samples pixels and receives IMU events.
  * All frames must arrive sequentially; the producer bounds in-flight work.
  * Browser reception time is NOT the exposure timestamp. */
-importScripts('./vio-tracker.js','./vio-keyframes.js','./vio-rotation.js','./vio-geometry.js','./vio-observation.js');
+importScripts('./vio-tracker.js','./vio-keyframes.js','./vio-rotation.js','./vio-geometry.js','./vio-vo-state.js','./vio-observation.js');
 let tracker=new PAIVioTracks.Tracker({maxTracks:90});
 let keyframes=new PAIVioKeyframes.KeyframeBank({maxFrames:3,interval:12,maxTrials:12});
+let voState=new PAIVioVOState.State();
 let lastT=null;
 self.onmessage=(e)=>{
  const m=e.data;
  if(m?.type==='reset'){
-  tracker.reset();keyframes.reset();lastT=null;postMessage({type:'reset-ack',session:m.session});return;
+  tracker.reset();keyframes.reset();voState.reset();lastT=null;postMessage({type:'reset-ack',session:m.session});return;
  }
  if(m?.type!=='frame')return;
  try{
@@ -49,11 +50,15 @@ self.onmessage=(e)=>{
     abCostMs=performance.now()-tAB;
    }
   }
+  // A failed visual solve breaks the orientation segment rather than
+  // pretending an IMU-calibrated world pose exists.
+  const vo=lastT===null?voState.snapshot(false,'first_frame'):
+   voState.advance(vision,epipolar,m.t);
   const trackPoints=tracker.tracks.map(({x,y,age})=>({x,y,age}));
   const start=lastT;lastT=m.t;
   postMessage({type:'result',session:m.session,seq:m.seq,start,end:m.t,
    processingMs:performance.now()-begun,
-   stageTiming:{trackingMs,rotationMs,geometryMs,abCostMs},candidateAB,keyframe:{...kf,summary:keyframes.snapshot()},
+   stageTiming:{trackingMs,rotationMs,geometryMs,abCostMs},candidateAB,vo,keyframe:{...kf,summary:keyframes.snapshot()},
    tracks:{total:current.total,initial:current.initial,retained:current.retained,added:current.added,retention:current.retention,longLived:current.longLived,
     lost:current.lost,avgAge:current.avgAge,medianError:current.medianError,
     recoveryAttempts:current.recoveryAttempts,recovered:current.recovered,recoveryPrior:current.recoveryPrior,

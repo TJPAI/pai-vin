@@ -11,7 +11,8 @@
  let lastTrackingTime=-Infinity,lastTrackingReport=null;
  let visionWorker=null,workerBusy=false,workerSession=0,workerSequence=0,workerProcessed=0,workerSkipped=0,workerErrors=0,workerCostMs=null;
  let visualTime=null,lastVisual=null,lastEpipolar=null,epipolarAccepted=0,epipolarRejected=0;
- const trackHistory=[];let lastKeyframe=null,keyframeHistory=[];let captureCostMs=null,captureIntervalMs=null,frameTimerTicks=0,frameTooSoon=0;
+ const trackHistory=[];let lastKeyframe=null,keyframeHistory=[];
+ let voLast=null,voHistory=[],voImuCompared=0,voImuAbsoluteErrorSumDeg=0;let captureCostMs=null,captureIntervalMs=null,frameTimerTicks=0,frameTooSoon=0;
  const visualHistory=[];const visualReasons={};const pendingObservations=[];
  let syncPassed=0,syncFailed=0,pairedPassed=0;
  let preintPassed=0,preintFailed=0,lastPreintegration=null;
@@ -54,6 +55,17 @@
     if(integ.ok){preintPassed++;lastPreintegration={ok:true,dt:integ.dt,samples:integ.samples,maxGapMs:integ.maxGapMs,
      deltaQuaternion:integ.deltaQuaternion,gravityCompensated:false,metricPoseAvailable:false};}
     else{preintFailed++;lastPreintegration={ok:false,reason:integ.reason};}
+    if(p.vo?.accepted&&integ.ok&&Number.isFinite(p.vision?.theta)){
+     // Magnitude-only diagnostic: no axis comparison and NO extrinsic fusion.
+     const q=integ.deltaQuaternion;
+     const imuDeg=2*Math.acos(Math.min(1,Math.max(-1,Math.abs(q[0]))))*180/Math.PI;
+     const visualDeg=p.vision.theta*180/Math.PI;
+     voImuCompared++;voImuAbsoluteErrorSumDeg+=Math.abs(visualDeg-imuDeg);
+     voHistory.push({t:p.end,segment:p.vo.segment,visualAngleDeg:visualDeg,
+      imuAngleDeg:imuDeg,absoluteDifferenceDeg:Math.abs(visualDeg-imuDeg),
+      exposureAligned:false,extrinsicsAligned:false});
+     if(voHistory.length>200)voHistory.shift();
+    }
     storeObservation(obs,p.end);
    }catch(e){
     storeObservation({ok:false,reason:'visual_observation_exception',visualMatchCount:0,
@@ -108,6 +120,13 @@
    '候选内参 A/B 尚无有效同帧样本；需本次摄像头会话完成多视角 A4 候选。';
   const keyEl=$('vioKeyframeStatus');
   if(keyEl)keyEl.textContent=lastKeyframe?'关键帧 '+lastKeyframe.keyframeCount+' · 历史二维重匹配 '+lastKeyframe.summary.verified2D+'/'+lastKeyframe.summary.attempts+' · 未建立3D地图':'等待关键帧二维观测';
+  const voEl=$('vioVOStatus');
+  if(voEl)voEl.textContent=voLast?'视觉VO：第'+voLast.segment+'段、连续'+voLast.segmentFrames+
+   '个旋转观测；累计成功'+voLast.acceptedSteps+' / 中断'+voLast.rejectedSteps+
+   '；IMU旋转幅值比对'+voImuCompared+'次、平均绝对差'+
+   (voImuCompared?(voImuAbsoluteErrorSumDeg/voImuCompared).toFixed(2)+'°':'—')+
+   '。仅相机旋转，未校准外参与时间；无平移或米制定位。':
+   '等待视觉旋转VO状态与IMU窗口比对。';
   const pre=$('vioPreintegrationStatus');
   if(pre)pre.textContent='IMU 预积分窗口 '+preintPassed+' 次成功 / '+preintFailed+' 次失败 · '+
     (lastPreintegration?.ok?'最新 '+(lastPreintegration.dt*1000).toFixed(0)+'ms、'+lastPreintegration.samples+' 样本':lastPreintegration?'暂不可用 '+lastPreintegration.reason:'等待数据')+
@@ -127,6 +146,7 @@
   if(m.type==='error'){workerErrors++;$('vioTrackNumbers').textContent='视觉 Worker 异常：'+m.message;return}
   if(m.type!=='result')return;
   workerProcessed++;workerCostMs=m.processingMs;
+  if(m.vo)voLast=m.vo;
   if(m.keyframe){lastKeyframe=m.keyframe;if(m.keyframe.inserted||m.keyframe.attempts){keyframeHistory.push({t:m.end,...m.keyframe});if(keyframeHistory.length>100)keyframeHistory.shift();}}
   if(m.candidateAB?.matchedInput){
    const ab=m.candidateAB;candidateABChecked++;
@@ -150,7 +170,7 @@
   if(trackHistory.length>200)trackHistory.shift();
   if(m.start!==null){
    pendingObservations.push({start:m.start,end:m.end,receivedAt:performance.now(),
-    tracks:{matches:[]},vision:m.vision,flow:m.flow});
+    tracks:{matches:[]},vision:m.vision,flow:m.flow,vo:m.vo});
   }
   flushObservations();
   const ctx=$('vioTrackCanvas').getContext('2d');
@@ -197,7 +217,7 @@
  }
  async function start(){
   if(stream)return;
-  buffer.reset();framesSeen=0;trackSourceGeometry=null;sharedCameraHandoff=null;lastTrackingTime=-Infinity;lastKeyframe=null;keyframeHistory=[];
+  buffer.reset();framesSeen=0;trackSourceGeometry=null;sharedCameraHandoff=null;lastTrackingTime=-Infinity;lastKeyframe=null;keyframeHistory=[];voLast=null;voHistory=[];voImuCompared=0;voImuAbsoluteErrorSumDeg=0;
   candidateABChecked=0;candidateABRotation={nominal:0,candidate:0};candidateABEpipolar={nominal:0,candidate:0};candidateABHistory=[];lastTrackingReport=null;
   workerSession++;workerSequence=0;workerBusy=false;workerProcessed=0;workerSkipped=0;workerErrors=0;workerCostMs=null;
   trackHistory.length=0;captureCostMs=null;captureIntervalMs=null;frameTimerTicks=0;frameTooSoon=0;
@@ -265,6 +285,10 @@
     imuWindowsPassed:syncPassed,imuWindowsFailed:syncFailed,bothPassed:pairedPassed,
     deferredWindowMatching:true,reasons:{...visualReasons},
     intrinsics:'unverified_nominal',recent:visualHistory},
+   visualOdometry:{last:voLast,imuMagnitudeComparisons:voImuCompared,
+    meanAbsoluteCameraImuAngleDifferenceDeg:voImuCompared?voImuAbsoluteErrorSumDeg/voImuCompared:null,
+    history:voHistory,rotationsOnly:true,extrinsicsVerified:false,exposureTimeVerified:false,
+    metricPoseAvailable:false},
    keyframeObservations:{last:lastKeyframe,history:keyframeHistory,metricPoseAvailable:false},
    candidateIntrinsicsAB:{checkedFrames:candidateABChecked,
     rotationPassed:{...candidateABRotation},epipolarPassed:{...candidateABEpipolar},
