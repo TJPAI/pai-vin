@@ -188,21 +188,7 @@ jobs:
             fi
             if [ "$build_code" -eq 0 ]; then
               echo 'OpenCV WASM static library build PASS; attempting stella configure' >> "$GITHUB_STEP_SUMMARY"
-              # Diagnose missing references in all OpenCV exported CMake targets before stella configure.
-              python3 - <<'PY'
-              import pathlib,re
-              root=pathlib.Path('/tmp/pai-wasm-prefix')
-              cmakes=list((root/'lib/cmake/opencv4').glob('OpenCVModules*.cmake'))
-              missing=set()
-              for f in cmakes:
-                  txt=f.read_text()
-                  for token in re.findall(r'\$\{_IMPORT_PREFIX\}(/[^"\n; ]+\.a)',txt):
-                      if not (root/token.lstrip('/')).exists():
-                          missing.add(token)
-              dest=pathlib.Path('probe-results/opencv-missing-exported-archives.txt')
-              dest.write_text('\n'.join(sorted(missing))+'\n')
-              print('Missing OpenCV exported static archives:', sorted(missing))
-              PY
+              python3 tools/v4-stella/check_opencv_exports.py /tmp/pai-wasm-prefix probe-results/opencv-missing-exported-archives.txt
               timeout 150s emcmake cmake -S /tmp/stella-vslam -B /tmp/stella-vslam/build-wasm-opencv \
                 -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DUSE_ARUCO=OFF -DUSE_CCACHE=OFF \
                 -DEIGEN3_INCLUDE_DIR=/usr/include/eigen3 \
