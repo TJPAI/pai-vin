@@ -1,79 +1,51 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0d1727"><link rel="manifest" href="./manifest.json">
-<title>PAI-VIN · 室内建图与定位</title>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d1727"><meta name="description" content="PAI-VIN iPhone Safari A4 calibration and on-device visual-inertial acquisition">
+<link rel="manifest" href="./manifest.json"><title>PAI-VIN · V3.2 VIO</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#0d1727;color:#eef5ff;font:15px -apple-system,BlinkMacSystemFont,sans-serif}main{max-width:680px;margin:0 auto;padding:18px 13px 75px}
-h1{font-size:24px;margin:2px 0 5px}h2{font-size:18px;margin:0 0 10px}p{line-height:1.6}.muted{color:#acc0da}.small{font-size:12px;line-height:1.5}
-.card{background:#172941;border:1px solid #38506c;border-radius:16px;padding:15px;margin:12px 0}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:15px}
-button,.action{display:inline-block;cursor:pointer;border:0;background:#4586e9;color:#fff;border-radius:11px;font-weight:650;padding:13px;text-decoration:none;text-align:center;font-size:15px}
-button.alt,.action.alt{background:#38516d}button:disabled{opacity:.44;cursor:not-allowed}.tabs button[aria-selected="true"]{outline:2px solid #8dbefa}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.stack{display:grid;gap:10px}
-canvas{width:100%;background:#102139;border-radius:11px}video{width:100%;max-height:245px;object-fit:cover;border-radius:11px;background:#080e17}
-input{max-width:100%;width:100%;font-size:14px;color:#dceeff}code{font-size:12px}a{color:#b2d9ff}
-.notice{border-left:3px solid #ffc46b;padding:9px 12px;background:#233044;color:#ffe3ba;border-radius:6px}
-.good{color:#8bf0b9}.stage{margin:11px 0;padding:11px;background:#102139;border-radius:12px}.stage b{display:block;margin-bottom:4px}
-[hidden]{display:none!important}
+*{box-sizing:border-box}body{margin:0;background:#0d1727;color:#eaf3ff;font:15px -apple-system,BlinkMacSystemFont,sans-serif}main{max-width:680px;margin:auto;padding:16px 14px 56px}header{margin-bottom:16px}h1{font-size:25px;margin:4px 0}h2{font-size:19px;margin:0 0 12px}h3{font-size:16px;margin:0 0 8px}
+p{line-height:1.55;margin:9px 0}small,.muted{color:#a8bdd5}.small{font-size:12.5px}section{background:#182941;border:1px solid #344b68;border-radius:16px;padding:15px;margin:13px 0}
+button,.action{display:inline-block;font-size:15px;font-weight:650;color:white;background:#4388ed;border:0;border-radius:10px;padding:12px 13px;text-align:center;text-decoration:none;cursor:pointer}
+button.alt,.action.alt{background:#3b526f}button:disabled{opacity:.45;cursor:not-allowed}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+video{width:100%;max-height:220px;object-fit:contain;border-radius:10px;background:#07101d;margin:6px 0}
+canvas{width:100%;background:#102139;border-radius:10px}#boardCanvas{touch-action:manipulation;max-width:380px}#vioTrackCanvas{max-width:500px;image-rendering:auto}
+.notice{border-left:3px solid #ffcb72;background:#29384b;border-radius:7px;padding:9px 12px;color:#f7dca5}.ok{color:#7ce4b2}
+a{color:#b2d5ff}[hidden]{display:none!important}
 </style></head><body><main>
-<h1>PAI-VIN <span class="muted small">V3.1 Alpha · 连续特征跟踪</span></h1>
-<p class="muted">目标：A4 标定、手机 SLAM 建图、再次进入后实时定位。当前仅完成 VIO 采集及连续特征跟踪测试。</p>
-
-<div class="card" id="vioDev"><h2>V3.1 · VIO 连续视觉跟踪（M1）</h2>
-<p class="notice">旧版无尺度绿色轨迹已被判定为不可靠。新 VIO 引擎仍在开发；目前仅执行真实摄像头/IMU 时间同步和数据质量验证，不绘制虚假位置。</p>
+<header><h1>PAI-VIN <small>V3.2 Alpha</small></h1>
+<p class="muted">iPhone Safari / PWA · 连续视觉惯性 SLAM 开发</p>
+<p class="notice">当前仅实现 A4 平面参照、摄像头与 IMU 采集、连续视觉特征跟踪。<b>尚无完整 VIO 位姿、米制二维地图或实时定位轨迹。</b></p></header>
+<section id="board">
+<h2>① A4 标定</h2>
+<p>将 <a href="./a4-board.html">A4 四角标定纸</a> 以 100% 实际尺寸打印。四个标记中心相距 160 × 247 mm。</p>
+<video id="boardCamera" autoplay muted playsinline></video>
+<div class="grid"><button id="boardOpen" type="button">开启标定摄像头</button><button id="boardSnap" type="button" disabled>拍摄标定画面</button></div>
+<p class="small muted">拍摄后依次点击四个标记中心：左上 → 右上 → 右下 → 左下。</p>
+<canvas id="boardCanvas" width="360" height="480" aria-label="A4 标定画面及角点"></canvas>
+<div class="grid"><button id="boardReset" class="alt" type="button">重选四角</button><button id="boardSave" type="button" disabled>保存 A4 参照</button></div>
+<p id="boardStatus" class="small muted" role="status">尚未标定</p>
+<p class="small muted">此步骤仅校验 A4 所在平面的尺寸与投影；不是完整相机内参、相机—IMU 外参或全局尺度标定。</p>
+</section>
+<section id="vioDev"><h2>② 手机本地 VIO 采集与连续跟踪</h2>
+<p>同时读取后置摄像头、IMU，并跟踪多帧特征 ID，评估跟踪寿命、采样率及同步质量。</p>
 <video id="vioVideo" autoplay muted playsinline></video>
-<div class="grid"><button type="button" id="vioStart">启动 VIO 传感器检测</button><button type="button" id="vioStop" disabled class="alt">停止检测</button></div>
-<p class="small muted" id="vioStatus">未启动。此模块不需要先清除原有的视觉关键帧地图。</p>
-<p class="small muted" id="vioNumbers">等待传感器</p>
-<p class="small muted" id="vioTrackNumbers">等待连续视觉特征</p>
-<canvas id="vioTrackCanvas" width="256" height="192" aria-label="手机真实摄像头特征轨迹采样点；非空间定位地图"></canvas>
-<p class="small muted">绿点表示摄像头画面中的持续跟踪特征，圈越大表示跨多帧存活，不是建筑内的位置。当前无全局 6DoF 位姿或米制轨迹。</p>
-<button type="button" id="vioExport" class="alt" style="width:100%">导出 VIO 传感器诊断 JSON</button>
-<p class="small muted">此模块不导出视频和照片；诊断 JSON 最多包含最近 300 条 IMU 数值，用于分析数据采集稳定性。</p>
-</div>
-
-<div class="tabs"><button id="tabSetup" aria-selected="true" type="button">① 首次建图</button><button id="tabUse" aria-selected="false" class="alt" type="button">② 日常定位</button></div>
-<section id="setup">
- <div class="card"><h2>准备：A4 标定 + 手机扫描</h2>
- <div class="stage"><b>1. A4 米制参照</b><p class="small muted">标准 A4、100% 实际尺寸打印。四个中心点间距应为 160 × 247 mm。标定板用于建立尺度约束；不代表已经完成相机内参标定。</p><a class="action alt" href="./a4-board.html">查看/打印标定板</a>
- <p class="small muted">在 Safari 中对准打印的标定纸，截图后依次点选四个标志的中心：左上 → 右上 → 右下 → 左下。</p>
- <video id="boardCamera" autoplay muted playsinline></video>
- <div class="grid"><button id="boardOpen" type="button">开启标定摄像头</button><button id="boardSnap" type="button" disabled>拍摄标定帧</button></div>
- <canvas id="boardCanvas" width="360" height="480" style="margin-top:9px;touch-action:manipulation" aria-label="拍摄标定图及四角点选"></canvas>
- <div class="grid"><button id="boardReset" class="alt" type="button">重新点选</button><button id="boardSave" type="button" disabled>保存平面标定</button></div>
- <p class="small muted" id="boardStatus">未标定。需要实际拍摄四角标定纸。</p>
- <p class="small muted">重要：此步骤只建立 A4 所在平面的像素到米坐标关系；不会自动得到整栋楼尺度，也不能替代 SLAM 的内参与外参标定。</p>
- </div>
- <div class="stage"><b>2. 在手机本地扫描环境</b>
-<p class="small muted">标定后拿手机在环境中走一圈。下方会采集和保存真实画面的视觉关键帧特征，显示扫描顺序和回到起点的候选识别。此图只标示关键帧数量和时间顺序，不绘制虚构的蛇形行走路线。</p>
-<video id="scanCamera" autoplay muted playsinline></video>
-<div class="grid"><button id="scanStart" type="button">开始手机扫描</button><button id="scanStop" class="alt" type="button" disabled>结束扫描并保存</button></div>
-<p id="scanStatus" class="small muted">未开始扫描</p>
-<canvas id="visualGraph" width="360" height="300" aria-label="真实视觉关键帧顺序和拓扑示意"></canvas>
-<p class="small muted">下图约每 450 毫秒检查连续帧。缓慢移动时会延长视觉参考帧的观察时间；仍无可信几何位姿就不绘制。可导出逐帧诊断，分析到底在哪一关丢失跟踪。每个可信段仍使用相同的任意长度。它不代表真实步行距离、方位或楼层坐标，不能作为导航地图。</p>
-<canvas id="voCanvas" width="360" height="300" aria-label="视觉里程计无尺度相对方向草图"></canvas>
-<p id="voScanStatus" class="small muted">尚无可信视觉相对运动</p><button id="voExport" class="alt" type="button" style="width:100%;margin:6px 0 12px">导出逐帧诊断 JSON（不含视频）</button>
-<div class="grid"><button id="scanExport" class="alt" type="button">导出视觉地图 JSON</button><button id="scanClear" class="alt" type="button">清空视觉地图</button></div>
-<p class="small muted">关键帧和特征保存在 Safari 当前网站的 IndexedDB。未上传视频或照片；清除 Safari 网站数据可能丢失地图。</p>
-<p><a href="./index.html#slamCapture">另存原始视频（供离线 SfM 验证）</a></p></div>
- <div class="stage"><b>3. 验证并保存地图</b><p class="small muted">需包含米制尺度已校验、建筑二维平面坐标和相机可重定位所需的特征。现有实拍 COLMAP 局部点云尚不能直接替代此地图。</p>
- <label for="mapFile">导入已完成校验的本地地图 JSON（开发接口）</label><input id="mapFile" type="file" accept=".json,application/json"><p id="mapStatus" class="small muted">尚无经过校验的米制地图。</p></div>
- </div>
+<div class="grid"><button type="button" id="vioStart">开始 VIO 采集</button><button type="button" id="vioStop" class="alt" disabled>停止采集</button></div>
+<p id="vioStatus" class="small muted" role="status">未开始采集</p>
+<p id="vioNumbers" class="small muted">等待传感器</p>
+<p id="vioTrackNumbers" class="small muted">等待视觉特征跟踪</p>
+<canvas id="vioTrackCanvas" width="256" height="192" aria-label="当前图像跟踪特征点，非房间二维地图"></canvas>
+<p class="small muted">绿点是相机图像中的特征，<b>不是手机空间位置或行走轨迹</b>。图像不上传，诊断 JSON 可包含 IMU 数值。</p>
+<button type="button" id="vioExport" class="alt" style="width:100%">导出 VIO 采集诊断 JSON</button>
 </section>
-<section id="use" hidden>
- <div class="card"><h2>日常定位：摄像头 + 轨迹</h2>
- <p class="notice" id="locNotice">等待经校验的地图和真实相机位姿。不会模拟米制位置。</p>
- <video autoplay muted playsinline id="camera"></video>
- <div class="grid"><button id="startCamera" type="button">开启摄像头</button><button id="stopCamera" class="alt" type="button" disabled>关闭摄像头</button></div>
- <p class="small muted" id="cameraStatus">摄像头未开启</p>
- <p class="small muted">本地场景识别：<strong id="recognitionStatus">未开始</strong></p>
- <p class="small muted">匹配质量：<strong id="recognitionQuality">—</strong></p>
- <p class="small muted">最近识别关键帧：<strong id="recognitionSequence">—</strong></p>
- <canvas id="mapCanvas" width="600" height="440" aria-label="室内二维定位地图及轨迹"></canvas>
- <p>位置：<strong id="position">尚未定位</strong></p><p>可信轨迹点：<strong id="trackCount">0</strong></p>
- <p class="small muted">只有同一已校验建筑地图坐标系内的可信米制位姿才会画到地图上。当前版本没有接通浏览器本地米制 SLAM 引擎，因此暂不绘制虚构路线。</p>
- </div>
-</section>
-<div class="card"><h2>旧版实验与研发入口</h2><p class="small muted">旧版关键帧匹配、双视图 VO 和 IMU 诊断继续保留，供算法调试使用，不代表正式导航产品。</p><a href="./web-vio-demo.html">打开视觉与 IMU 诊断工具</a></div>
+<section id="map"><h2>③ 建图与日常定位</h2>
+<p>连续 6DoF 视觉惯性状态估计、关键帧地图优化、米制尺度恢复及保存地图后的重定位正在开发；这些功能未完成前不提供模拟地图与虚假轨迹。</p>
+<p class="small muted">验收目标：A4 标定 → 手机 SLAM 走一圈生成二维地图 → 再次开启摄像头在同一地图上实时画真实轨迹。</p></section>
 </main>
-<script src="./web-vio-features.js"></script><script src="./web-vio-geometry.js"></script><script src="./vin-landmark-graph.js"></script><script src="./web-vio-pose.js"></script><script src="./vin-vo-path.js"></script><script src="./vin-scan.js"></script><script src="./vin-a4-board.js"></script><script src="./web-metric-map.js"></script><script src="./vin-app.js"></script><script src="./vio-sensor-core.js"></script><script src="./vio-tracker.js"></script><script src="./vio-sensor-probe.js"></script>
-<script>if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(()=>{});</script>
+<script src="./vin-a4-board.js"></script>
+<script src="./vin-app.js"></script>
+<script src="./web-vio-features.js"></script>
+<script src="./vio-sensor-core.js"></script>
+<script src="./vio-tracker.js"></script>
+<script src="./vio-sensor-probe.js"></script>
+<script>if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});</script>
 </body></html>
