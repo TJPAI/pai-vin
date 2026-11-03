@@ -39,6 +39,25 @@ function nearest(a,b,w,h,x,y,px,py,search){
  }
  return {x:bx,y:by,error:best};
 }
+// Evaluate the union of the full-resolution coarse and local SSD windows
+// once. Each window retains its own strict < tie-breaking and scan order.
+// This is exactly equivalent to two independent nearest() calls.
+function pairedNearest(a,b,w,h,x,y,px1,py1,s1,px2,py2,s2,stats){
+ const cx1=Math.round(px1),cy1=Math.round(py1),cx2=Math.round(px2),cy2=Math.round(py2);
+ const loX=Math.min(cx1-s1,cx2-s2),hiX=Math.max(cx1+s1,cx2+s2);
+ const loY=Math.min(cy1-s1,cy2-s2),hiY=Math.max(cy1+s1,cy2+s2);
+ let e1=Infinity,e2=Infinity,x1=-1,y1=-1,x2=-1,y2=-1;
+ for(let v=loY;v<=hiY;v++)for(let u=loX;u<=hiX;u++){
+  const in1=Math.abs(u-cx1)<=s1&&Math.abs(v-cy1)<=s1;
+  const in2=Math.abs(u-cx2)<=s2&&Math.abs(v-cy2)<=s2;
+  if(!in1&&!in2)continue;
+  if(stats)stats.ssdCalls=(stats.ssdCalls||0)+1;
+  const value=score(a,b,w,h,x,y,u,v);
+  if(in1&&value<e1){e1=value;x1=u;y1=v;}
+  if(in2&&value<e2){e2=value;x2=u;y2=v;}
+ }
+ return e2<=e1?{x:x2,y:y2,error:e2}:{x:x1,y:y1,error:e1};
+}
 // Image-gradient Lucas-Kanade subpixel refinement around a validated
 // integer-pixel coarse-to-fine correspondence. No pose/scale is inferred.
 function bilinear(g,w,h,x,y){
@@ -91,9 +110,15 @@ function trackOne(prev,now,p,opts={}){
   {error:Infinity};
  const halfDirect=nearest(aSmall,bSmall,w>>1,h>>1,x,y,x,y,opts.coarseSearch??6);
  const rough=halfFromQuarter.error<=halfDirect.error?halfFromQuarter:halfDirect;
- const coarse=nearest(prev,now,w,h,ax,ay,2*rough.x,2*rough.y,opts.fineSearch??3);
- const local=nearest(prev,now,w,h,ax,ay,ax,ay,opts.localSearch??6);
- const fwd=local.error<=coarse.error?local:coarse;
+ let fwd;
+ if(opts.pairedSearch===false){
+  const coarse=nearest(prev,now,w,h,ax,ay,2*rough.x,2*rough.y,opts.fineSearch??3);
+  const local=nearest(prev,now,w,h,ax,ay,ax,ay,opts.localSearch??6);
+  fwd=local.error<=coarse.error?local:coarse;
+ }else{
+  fwd=pairedNearest(prev,now,w,h,ax,ay,2*rough.x,2*rough.y,opts.fineSearch??3,
+   ax,ay,opts.localSearch??6,opts.stats);
+ }
  if(!Number.isFinite(fwd.error)||fwd.error>(opts.maxError??360))return null;
  const back=nearest(now,prev,w,h,fwd.x,fwd.y,ax,ay,opts.backwardSearch??5);
  if(!Number.isFinite(back.error)||Math.hypot(back.x-ax,back.y-ay)>1.5)return null;
@@ -190,5 +215,5 @@ class Tracker{
  }
  reset(){this.frame=null;this.tracks=[];this.nextId=1;this.frameCount=0;this.trackTotal=0;this.last=null}
 }
-return {Tracker,corners,cornerStrength,trackOne,down,score,refineLK,bilinear};
+return {Tracker,corners,cornerStrength,trackOne,pairedNearest,down,score,refineLK,bilinear};
 });

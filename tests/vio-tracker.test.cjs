@@ -98,6 +98,34 @@ for(const sample of [image,pattern,shift(image,11,4),frac]){
  const got=V.corners(sample,W,H,90),want=legacyCorners(sample,W,H,90);
  assert.deepEqual(got,want,'corner detection must precisely match V3.12 baseline');
 }
+// Fixed-sequence A/B regression: identical forward match and exact displacement
+// against the previous two-window search on deterministic 256x192 images.
+const abPairs=[
+ [image,shift(image,2,1)],
+ [image,shift(image,5,2)],
+ [image,shift(image,14,6)],
+ [pattern,fractionalShift(pattern,.65,.35)],
+ [pattern,fractionalShift(pattern,2.4,1.3)]
+];
+let abCount=0;
+for(const [previous,current] of abPairs){
+ const prevSmall=V.down(previous,W,H),nowSmall=V.down(current,W,H);
+ const o={w:W,h:H,prevSmall,nowSmall,prevQuarter:V.down(prevSmall,W>>1,H>>1),
+  nowQuarter:V.down(nowSmall,W>>1,H>>1),subpixel:false};
+ for(let y=20;y<170;y+=11)for(let x=20;x<235;x+=13){
+  const p={x,y},baseline=V.trackOne(previous,current,p,{...o,pairedSearch:false});
+  const optimized=V.trackOne(previous,current,p,o);
+  assert.deepEqual(optimized,baseline,'paired SSD search must not alter tracking result');
+  abCount++;
+ }
+}
+assert.ok(abCount>=900,'A/B must cover broad input set');
+// Deterministic candidate cost: overlapping windows are visited once.
+const stats={ssdCalls:0};
+const sameWindow=V.pairedNearest(image,image,W,H,128,96,128,96,3,128,96,6,stats);
+assert.deepEqual(sameWindow,{x:128,y:96,error:0});
+assert.equal(stats.ssdCalls,169,'13x13 union avoids double-evaluating 7x7 overlap');
+assert.ok(1-stats.ssdCalls/(169+49)>.2,'overlap should save >20% SSD evaluations');
 const tracker=new V.Tracker({maxTracks:85});
 const first=tracker.update(image,100);
 assert.ok(first.total>=35,JSON.stringify(first));
