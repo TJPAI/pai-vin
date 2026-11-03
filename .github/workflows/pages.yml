@@ -33,6 +33,7 @@ jobs:
           node --check vio-fusion.js
           node --check vio-observation.js
           node --check vio-vision-worker.js
+          node tests/vio-worker-contract.test.cjs
           node tests/vio-observation.test.cjs
           node tests/vio-rotation.test.cjs
           node tests/vio-fusion.test.cjs
