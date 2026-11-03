@@ -40,7 +40,9 @@ assert.equal(scattered.spatiallyVariable,true);
 const poor=O.flowStatistics([{px:1,py:2,x:2,y:3}]);
 assert.equal(poor.translationLike,false);
 assert.equal(O.flowStatistics([]).count,0);
-const classified=V.estimate(matches.slice(0,24).map((p,i)=>i<16?{...p,x:p.x+60,y:p.y-50}:p).map(p=>({id:p.id,px:p.x-p.dx,py:p.y-p.dy,x:p.x,y:p.y})),K);
+const classified=V.estimate(matches.slice(0,10).map(p=>({
+ id:p.id,px:p.x-p.dx,py:p.y-p.dy,x:p.x,y:p.y})),K);
 assert.equal(classified.ok,false);
-assert.ok(['rotation_geometry_unreliable','insufficient_tracks'].includes(classified.reason));
+assert.equal(classified.reason,'insufficient_tracks');
+assert.equal(classified.total,10);
 console.log('VIO image-track/IMU observation diagnostic tests PASS');
