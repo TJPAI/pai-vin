@@ -26,6 +26,8 @@ jobs:
           test -s docs/SLAM_DATASET.md
           node --check slam-capture.js
           node --check web-vio-demo.js
+          node --check web-vio-geometry.js
+          node tests/web-vio-geometry.test.cjs
           test -s web-vio-demo.html
           grep -q 'web-vio-demo.html' index.html
           node --check sw.js
