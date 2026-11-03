@@ -10,7 +10,7 @@
  const trackContext=trackCanvas.getContext('2d',{willReadFrequently:true});
  let lastTrackingTime=-Infinity,lastTrackingReport=null;
  let visionWorker=null,workerBusy=false,workerSession=0,workerSequence=0,workerProcessed=0,workerSkipped=0,workerErrors=0,workerCostMs=null;
- let visualTime=null,lastVisual=null;
+ let visualTime=null,lastVisual=null,lastEpipolar=null,epipolarAccepted=0,epipolarRejected=0;
  const trackHistory=[];let captureCostMs=null,captureIntervalMs=null,frameTimerTicks=0,frameTooSoon=0;
  const visualHistory=[];const visualReasons={};const pendingObservations=[];
  let syncPassed=0,syncFailed=0,pairedPassed=0;
@@ -58,6 +58,7 @@
   const fusionStatus=$('vioFusionStatus');
   if(fusionStatus){
    const last=lastVisual;
+   const epi=lastEpipolar;
    const names={insufficient_tracks:'连续特征不足',rotation_geometry_unreliable:'旋转几何不一致',
     invalid_frame_timing:'帧时间异常',intrinsics_missing:'相机参数缺失',
     rotation_jump:'旋转估计跳变',visual_observation_exception:'观测模块异常'};
@@ -67,7 +68,7 @@
     (last?'视觉观测暂不可用：'+(details[last.geometryFailureDetail]||names[last.reason]||last.reason)+'，匹配 '+last.visualMatchCount:'等待连续视觉帧');
    fusionStatus.textContent='实时视觉观测：'+recent+'；本次通过 '+visualAccepted+' 次，未通过 '+visualRejected+' 次。'+
     ' 已完成 IMU 时间配对 '+syncPassed+' 次，真正双有效 '+pairedPassed+' 次。'+
-    flowInfo+' IMU 数据窗口：'+(last?last.imuWindowOk?'可用':'不可用 ('+last.imuWindowReason+')':'等待')+
+    flowInfo+(epi?' · 双视图极线 '+(epi.ok?'一致':'暂不可用 '+epi.reason)+' '+epi.inliers+'/'+epi.total+'，中位图像位移 '+(epi.medianFlowPx?.toFixed(1)??'—')+' px':'')+' IMU 数据窗口：'+(last?last.imuWindowOk?'可用':'不可用 ('+last.imuWindowReason+')':'等待')+
     '。采用未标定名义焦距，仅作诊断，不进行姿态融合或位置输出。';
   }
   const sensor=$('vioInitStatus');
@@ -86,6 +87,8 @@
   if(m.type!=='result')return;
   workerProcessed++;workerCostMs=m.processingMs;
   lastTrackingReport=m.tracks;
+  lastEpipolar=m.epipolar||null;
+  if(lastEpipolar){if(lastEpipolar.ok)epipolarAccepted++;else epipolarRejected++;}
   trackHistory.push({t:m.end,frameGapMs:m.start===null?null:m.end-m.start,
    tracks:m.tracks.total,retained:m.tracks.retained,added:m.tracks.added,
    lost:m.tracks.lost,retention:m.tracks.retention,longLived:m.tracks.longLived,
@@ -135,7 +138,7 @@
   workerSession++;workerSequence=0;workerBusy=false;workerProcessed=0;workerSkipped=0;workerErrors=0;workerCostMs=null;
   trackHistory.length=0;captureCostMs=null;captureIntervalMs=null;frameTimerTicks=0;frameTooSoon=0;
   initializer=null;attitude=null;initAttemptAt=-Infinity;initReason='等待静止初始化';
-  visualTime=null;lastVisual=null;visualAccepted=0;visualRejected=0;syncPassed=0;syncFailed=0;pairedPassed=0;visualHistory.length=0;pendingObservations.length=0;
+  visualTime=null;lastVisual=null;lastEpipolar=null;epipolarAccepted=0;epipolarRejected=0;visualAccepted=0;visualRejected=0;syncPassed=0;syncFailed=0;pairedPassed=0;visualHistory.length=0;pendingObservations.length=0;
   Object.keys(visualReasons).forEach(k=>delete visualReasons[k]);
   if(window.PAIVIN?.stopBoardCamera)window.PAIVIN.stopBoardCamera();
   try{
@@ -182,6 +185,7 @@
   const data={schema:'pai-vin-vio-acquisition-v1',capturedAt:new Date().toISOString(),browserClock:'performance.now',
    cameraExposureTimestampAvailable:false,deviceIMUExtrinsicsCalibrated:false,wasmVioEstimatorConnected:false,
    visualRotationModuleAvailable:true,visualAttitudeCorrectionEnabled:false,
+   twoViewEpipolarDiagnostic:{accepted:epipolarAccepted,rejected:epipolarRejected,last:lastEpipolar,metricPoseAvailable:false},
    visualRotationDiagnostic:{accepted:visualAccepted,rejected:visualRejected,
     imuWindowsPassed:syncPassed,imuWindowsFailed:syncFailed,bothPassed:pairedPassed,
     deferredWindowMatching:true,reasons:{...visualReasons},
