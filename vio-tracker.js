@@ -45,15 +45,21 @@ function trackOne(prev,now,p,opts={}){
  if(!pixels(prev,w,h,p.x,p.y))return null;
  const aSmall=opts.prevSmall||down(prev,w,h),bSmall=opts.nowSmall||down(now,w,h);
  const x=p.x>>1,y=p.y>>1;
- const rough=nearest(aSmall,bSmall,w>>1,h>>1,x,y,x,y,opts.coarseSearch??6);
- if(!Number.isFinite(rough.error)||rough.error>1000)return null;
- // A second full-resolution local search handles subpixel/odd-pixel moves
- // that become ambiguous after 2x box downsampling.
+ // Three-level tracking: accommodate larger genuine inter-frame motion
+ // while retaining full-resolution forward-backward validation.
+ const aQuarter=opts.prevQuarter||down(aSmall,w>>1,h>>1);
+ const bQuarter=opts.nowQuarter||down(bSmall,w>>1,h>>1);
+ const q=nearest(aQuarter,bQuarter,w>>2,h>>2,p.x>>2,p.y>>2,p.x>>2,p.y>>2,opts.quarterSearch??5);
+ const halfFromQuarter=Number.isFinite(q.error)?
+  nearest(aSmall,bSmall,w>>1,h>>1,x,y,2*q.x,2*q.y,opts.halfSearch??3):
+  {error:Infinity};
+ const halfDirect=nearest(aSmall,bSmall,w>>1,h>>1,x,y,x,y,opts.coarseSearch??6);
+ const rough=halfFromQuarter.error<=halfDirect.error?halfFromQuarter:halfDirect;
  const coarse=nearest(prev,now,w,h,p.x,p.y,2*rough.x,2*rough.y,opts.fineSearch??3);
  const local=nearest(prev,now,w,h,p.x,p.y,p.x,p.y,opts.localSearch??6);
  const fwd=local.error<=coarse.error?local:coarse;
  if(!Number.isFinite(fwd.error)||fwd.error>(opts.maxError??360))return null;
- const back=nearest(now,prev,w,h,fwd.x,fwd.y,p.x,p.y,opts.backwardSearch??3);
+ const back=nearest(now,prev,w,h,fwd.x,fwd.y,p.x,p.y,opts.backwardSearch??5);
  if(!Number.isFinite(back.error)||Math.hypot(back.x-p.x,back.y-p.y)>1.5)return null;
  return {x:fwd.x,y:fwd.y,error:fwd.error,fbError:Math.hypot(back.x-p.x,back.y-p.y)};
 }
@@ -85,7 +91,9 @@ class Tracker{
   const prev=this.frame,old=this.tracks,initial=old.length;
   let current=[],failed=0,errs=[];
   if(prev){
-   const opts={w:this.w,h:this.h,prevSmall:down(prev,this.w,this.h),nowSmall:down(gray,this.w,this.h)};
+   const prevSmall=down(prev,this.w,this.h),nowSmall=down(gray,this.w,this.h);
+   const opts={w:this.w,h:this.h,prevSmall,nowSmall,
+    prevQuarter:down(prevSmall,this.w>>1,this.h>>1),nowQuarter:down(nowSmall,this.w>>1,this.h>>1)};
    for(const p of old){
     const q=trackOne(prev,gray,p,opts);
     if(q&&current.every(k=>(k.x-q.x)**2+(k.y-q.y)**2>=36)){
