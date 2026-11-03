@@ -1,8 +1,8 @@
 {
-  "name": "PAI-VIN Demo",
+  "name": "PAI-VIN VIO",
   "short_name": "PAI-VIN",
-  "description": "iPhone visual inertial feasibility demo",
-  "start_url": "./",
+  "description": "iPhone Safari A4 calibration and real visual-inertial acquisition",
+  "start_url": "./vin-app.html",
   "display": "standalone",
   "background_color": "#0d1727",
   "theme_color": "#0d1727",
