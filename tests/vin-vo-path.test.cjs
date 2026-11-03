@@ -17,6 +17,17 @@ const fakePose={estimate(){called++;return {ok:true,inliers:35,ratio:.9,cheirali
 assert.equal(V.parseStep(stationaryPoints,stationaryPoints,geom,fakePose,{frameChange:V.frameChange(staticGray,same)}).ok,false);
 assert.equal(called,0,'static frame must stop before pose solver');
 assert.equal(V.parseStep(stationaryPoints,stationaryPoints,geom,fakePose,{frameChange:V.frameChange(staticGray,exposure)}).reason,'stationary_frame');
+// A spatially varying parallax field must not be discarded just because
+// its flow vectors differ; pure rotation must still fail closed.
+const shifted=stationaryPoints.map((v,i)=>({...v,x:v.x+4+(i%4)*2,y:v.y+1+(i%3)*2}));
+const realisticPose={estimate(){return {ok:true,inliers:34,ratio:.85,cheirality:27,
+ R:[[1,0,0],[0,1,0],[0,0,1]],t:[1,0,0],matches:40}}};
+const moving=V.parseStep(stationaryPoints,shifted,geom,realisticPose,{frameChange:{ok:true}});
+assert.equal(moving.ok,true,JSON.stringify(moving));
+assert.ok(moving.parallaxPx>2.2);
+const rotateOnly=stationaryPoints.map(v=>({...v,x:v.x+5,y:v.y+3}));
+const rotationRejected=V.parseStep(stationaryPoints,rotateOnly,geom,realisticPose,{frameChange:{ok:true}});
+assert.equal(rotationRejected.reason,'pure_rotation_or_no_parallax');
 assert.equal(s.append({ok:true,dx:1,dz:0,yaw:0}),true);
 assert.equal(s.append({ok:true,dx:0,dz:1,yaw:0}),true);
 assert.equal(s.nodes.length,3);
