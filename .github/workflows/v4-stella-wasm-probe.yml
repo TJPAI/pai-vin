@@ -116,6 +116,35 @@ jobs:
           else
             echo 'Next dependency blocker found; see evidence artifact.' >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Fourth configure probe - build real yaml-cpp for WASM
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p /tmp/yaml-cpp-src
+          git clone --depth 1 --branch 0.8.0 https://github.com/jbeder/yaml-cpp.git /tmp/yaml-cpp-src
+          emcmake cmake -S /tmp/yaml-cpp-src -B /tmp/yaml-cpp-build \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+            -DYAML_CPP_BUILD_TESTS=OFF -DYAML_CPP_BUILD_TOOLS=OFF \
+            -DCMAKE_INSTALL_PREFIX=/tmp/pai-wasm-prefix > probe-results/yaml-wasm-build.log 2>&1
+          emmake cmake --build /tmp/yaml-cpp-build -j2 >> probe-results/yaml-wasm-build.log 2>&1
+          emmake cmake --install /tmp/yaml-cpp-build >> probe-results/yaml-wasm-build.log 2>&1
+          test -f /tmp/pai-wasm-prefix/lib/libyaml-cpp.a
+          echo 'yaml-cpp 0.8.0 static library WASM compilation PASS' >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          timeout 120s emcmake cmake -S /tmp/stella-vslam -B /tmp/stella-vslam/build-wasm-yaml \
+            -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DUSE_ARUCO=OFF -DUSE_CCACHE=OFF \
+            -DEIGEN3_INCLUDE_DIR=/usr/include/eigen3 -DCMAKE_PREFIX_PATH=/tmp/pai-wasm-prefix \
+            -DCMAKE_BUILD_TYPE=Release > probe-results/stella-yaml-configure.log 2>&1
+          code=$?
+          set -e
+          printf '%s\n' "$code" > probe-results/yaml-configure-exit-code.txt
+          echo "With OpenMP relaxed, Eigen and WASM yaml-cpp: stella configure exit $code" >> "$GITHUB_STEP_SUMMARY"
+          tail -n 70 probe-results/stella-yaml-configure.log
+          if [ "$code" -eq 0 ]; then
+            echo 'Configuration passed. SLAM compile/link and Safari execution remain UNTESTED.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Next dependency blocker follows; see artifact log.' >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Save configure evidence (including blockers)
         uses: actions/upload-artifact@v4
         with:
