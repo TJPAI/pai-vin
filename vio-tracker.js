@@ -116,8 +116,11 @@ function cornerStrength(gray,w,h,x,y){
 function corners(gray,w=W,h=H,max=125){
  const arr=[];
  for(let y=9;y<h-9;y+=3)for(let x=9;x<w-9;x+=3){
-  const c=cornerStrength(gray,w,h,x,y);
-  if(c>24)arr.push({x,y,score:c});
+  const i=y*w+x;
+  const dx=Math.abs(gray[i+1]-gray[i-1])+Math.abs(gray[i+w+1]-gray[i-w+1]);
+  const dy=Math.abs(gray[i+w]-gray[i-w])+Math.abs(gray[i+w+1]-gray[i-w+1]);
+  const c=Math.min(dx,dy);
+  if(c>48)arr.push({x,y,score:c});
  }
  arr.sort((a,b)=>b.score-a.score);
  // Preserve coverage across the image instead of allowing a textured wall
