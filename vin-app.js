@@ -6,6 +6,7 @@ const $=id=>document.getElementById(id);
 let boardStream=null,snapshot=false,corners=[],result=null;
  let calibrationStreamOwned=false;
  const focalSamples=[];
+ let gridLast=null;const gridSamples=[];
  const focalStatus=$('boardFocalStatus');
  const focalSay=message=>{if(focalStatus)focalStatus.textContent=message};
  let focalLastResult=null;
@@ -14,7 +15,12 @@ let boardStream=null,snapshot=false,corners=[],result=null;
   const data={schema:'pai-vin-focal-capture-v1',appVersion:$('appVersion')?.dataset.version||'unknown',
    recordedAt:new Date().toISOString(),imageWidth:snap.width,imageHeight:snap.height,
    boardMarkerSpacingM:[.16,.247],boardSourceGeometry,samples:focalSamples.map(x=>x.corners.map(p=>p.slice())),
-   estimate:focalLastResult,containsPhotos:false,containsFrames:false,
+   estimate:focalLastResult,
+   gridBoard:{schema:'pai-vin-a4-grid-v2',last:gridLast,samples:gridSamples,
+    detectedViews:gridSamples.filter(s=>s.ok).length,
+    interiorMarkersUsedInCameraOptimization:false,
+    independentInteriorProjectionDiagnostic:true},
+   containsPhotos:false,containsFrames:false,
    warning:'Unverified constrained focal candidate; not full calibration or metric SLAM'};
   const url=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
   const a=document.createElement('a');a.href=url;a.download='pai-vin-focal-'+Date.now()+'.json';
@@ -37,6 +43,7 @@ function draw(){
   ctx.font='17px sans-serif';ctx.fillText(String(i+1),x+9,y-5);
  }
  if(corners.length===4){ctx.beginPath();corners.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();ctx.stroke()}
+ if(gridLast?.ok){ctx.fillStyle='#78dbff';for(const p of gridLast.points){ctx.beginPath();ctx.arc(p.image[0],p.image[1],3,0,Math.PI*2);ctx.fill();}}
 }
 function closeCamera(){
  if(boardStream&&calibrationStreamOwned)boardStream.getTracks().forEach(t=>t.stop());
@@ -72,7 +79,7 @@ $('boardSnap').onclick=()=>{
  const factor=geometry.scaleX,ww=dw*factor,hh=dh*factor;
  snapCtx.fillStyle='#07101d';snapCtx.fillRect(0,0,w,h);
  snapCtx.drawImage(v,(w-ww)/2,(h-hh)/2,ww,hh);
- snapshot=true;corners=[];result=null;
+ snapshot=true;corners=[];result=null;gridLast=null;
  // Preserve live camera stream across calibration snapshots.
  try{
   const pixels=snapCtx.getImageData(0,0,w,h).data;
@@ -83,14 +90,22 @@ $('boardSnap').onclick=()=>{
   }
   const candidate=VINBoard.calibrate(detected.corners,w,h);
   if(!candidate.ok){draw();say('标定几何校验未通过（'+candidate.reason+'），请重拍');return}
-  corners=detected.corners;result=candidate;draw();
+  corners=detected.corners;result=candidate;
+  const gridGray=VINBoardDetect.toGray(pixels,w,h);
+  gridLast=PAIVioGrid.detect(gridGray,w,h,corners);
+  draw();
   localStorage.setItem('pai-vin-a4-plane-v1',JSON.stringify({
    ...result,recordedAt:new Date().toISOString(),autoDetected:true,
    detectedMarkerCount:4,detector:detected.method
   }));
   // Multi-view candidate: no image is stored. Require varied perspectives.
   const existing=focalSamples.some(p=>Math.sqrt(p.corners.reduce((a,v,i)=>a+(v[0]-corners[i][0])**2+(v[1]-corners[i][1])**2,0)/4)<12);
-  if(!existing&&focalSamples.length<12)focalSamples.push({corners:corners.map(p=>p.slice())});
+  if(!existing&&focalSamples.length<12){
+   focalSamples.push({corners:corners.map(p=>p.slice())});
+   gridSamples.push({ok:gridLast.ok,detected:gridLast.detected||0,
+    rmsFourCornerHomographyPx:gridLast.rmsFourCornerHomographyPx??null,
+    points:gridLast.points||[],reason:gridLast.reason});
+  }
   const estimate=PAIVioFocal.estimate(focalSamples.map(p=>p.corners),w,h);
   focalLastResult=estimate;
   // Do not let an old candidate silently survive a new, invalid session.
@@ -109,9 +124,13 @@ $('boardSnap').onclick=()=>{
     ' · 径向k1候选 '+radial.candidateK1.toFixed(3)+
     '，留一视角几何约束改善 '+(100*radial.relativeImprovement).toFixed(1)+'%（仍未验证）':
     ' · 径向畸变候选尚无可靠的≥10%跨视角改善证据';
+   const multi=gridSamples.filter(s=>s.ok);
+   const gRms=multi.length?Math.sqrt(multi.reduce((sum,s)=>sum+s.rmsFourCornerHomographyPx**2,0)/multi.length):null;
+   const gridInfo=multi.length?' · V2多点板 '+multi.length+'视角；内部点几何RMS '+gRms.toFixed(2)+'px（不参与四角单应求解）':
+    ' · V2内部点不足16个：保留V1四角兼容模式';
    focalSay('标定画布640×480；候选焦距 fx='+estimate.fx.toFixed(1)+'px · 质量提示：'+label+
     (q?.reasons?.length?'（'+q.reasons.map(x=>reasons[x]||x).join('、')+'）':'')+
-    ' · 模型内重投影 RMS '+estimate.reprojectionRmsPx.toFixed(2)+'px · 逐视角最大 '+estimate.maxViewReprojectionRmsPx.toFixed(2)+'px · 留一法波动 '+(100*estimate.leaveOneOutRelativeSpread).toFixed(1)+'%'+radialInfo+'。当前畸变仅诊断未用于VIO；四角约束并非独立像素重投影验证，仍需完整内参与外参标定。');
+    gridInfo+' · 模型内重投影 RMS '+estimate.reprojectionRmsPx.toFixed(2)+'px · 逐视角最大 '+estimate.maxViewReprojectionRmsPx.toFixed(2)+'px · 留一法波动 '+(100*estimate.leaveOneOutRelativeSpread).toFixed(1)+'%'+radialInfo+'。当前畸变仅诊断未用于VIO；四角约束并非独立像素重投影验证，仍需完整内参与外参标定。');
    say('A4平面参照已保存；多视角焦距候选已产生。'+
     (q?.status==='review_capture'?'留一法焦距变化偏大，请补充不同倾斜方向的视角。':
      q?.status==='model_limited'?'留一法焦距较稳定，当前主要是针孔模型拟合误差，继续增加照片未必改善；不需要反复拍摄。':
