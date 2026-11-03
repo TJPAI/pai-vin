@@ -33,6 +33,11 @@ jobs:
           node tests/web-vio-pose.test.cjs
           node --check web-vio-inertial.js
           node tests/web-vio-inertial.test.cjs
+          node --check web-metric-map.js
+          node tests/web-metric-map.test.cjs
+          node --check vin-app.js
+          test -s vin-app.html
+          grep -q 'vin-app.html' index.html
           node tests/web-vio-geometry.test.cjs
           test -s web-vio-demo.html
           grep -q 'web-vio-demo.html' index.html
