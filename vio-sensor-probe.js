@@ -21,7 +21,7 @@
   return PAIVioCalibration.fromBrowser({a4:plane,exposureTimestampAvailable:false});
  };
  let stream=null,timer=null,listener=null,framesSeen=0;
- let trackSourceGeometry=null;
+ let trackSourceGeometry=null,sharedCameraHandoff=null;
  let initializer=null,attitude=null,initAttemptAt=-Infinity,initReason='等待静止初始化';
  const show=s=>{$('vioStatus').textContent=s};
  function storeObservation(obs,t){
@@ -63,11 +63,16 @@
  function report(){
   const readiness=calibrationStatus();
   let focal=null;try{focal=JSON.parse(localStorage.getItem('pai-vin-focal-candidate-v1')||'null')}catch(e){}
-  const geometryCheck=PAIVioViewport.compatibility(focal?.boardSourceGeometry,trackSourceGeometry);
+  const geometryCheck=sharedCameraHandoff?
+   PAIVioViewport.compatibility(sharedCameraHandoff.boardGeometry,trackSourceGeometry,
+    {sameStream:true,intrinsics:sharedCameraHandoff.focal}):
+   PAIVioViewport.compatibility(focal?.boardSourceGeometry,trackSourceGeometry);
   const geometryEl=$('vioGeometryStatus');
   if(geometryEl)geometryEl.textContent='相机图像几何：'+(trackSourceGeometry?'VIO源 '+trackSourceGeometry.sourceWidth+'×'+trackSourceGeometry.sourceHeight+'→256×192；':'未取得VIO源画幅；')+
    (focal?.boardSourceGeometry?'标定源 '+focal.boardSourceGeometry.sourceWidth+'×'+focal.boardSourceGeometry.sourceHeight+'；':'标定源画幅未知；')+
-   '跨会话焦距不可直接使用（'+geometryCheck.reason+'），视觉仍用名义焦距诊断。';
+   (geometryCheck.ok?'同一摄像头会话：图像变换可用；':'焦距不能直接套用（'+geometryCheck.reason+'）；')+
+   (geometryCheck.candidateIntrinsics?'跟踪图像候选焦距 fx='+geometryCheck.candidateIntrinsics.fx.toFixed(1)+'px；':'')+
+   '候选未完成完整标定，视觉仍用名义焦距诊断。';
   const el=$('vioCalibrationStatus');
   if(el)el.textContent='联合估计标定检查：'+(readiness.a4PlaneAvailable?'A4 平面参照已保存；':'A4 平面参照未提供；')+
    '相机内参、相机—IMU 外参与真实曝光时间偏移均未验证，视觉惯性位置融合保持关闭。';
@@ -161,13 +166,13 @@
  }
  async function start(){
   if(stream)return;
-  buffer.reset();framesSeen=0;trackSourceGeometry=null;lastTrackingTime=-Infinity;lastTrackingReport=null;
+  buffer.reset();framesSeen=0;trackSourceGeometry=null;sharedCameraHandoff=null;lastTrackingTime=-Infinity;lastTrackingReport=null;
   workerSession++;workerSequence=0;workerBusy=false;workerProcessed=0;workerSkipped=0;workerErrors=0;workerCostMs=null;
   trackHistory.length=0;captureCostMs=null;captureIntervalMs=null;frameTimerTicks=0;frameTooSoon=0;
   initializer=null;attitude=null;initAttemptAt=-Infinity;initReason='等待静止初始化';
   visualTime=null;lastVisual=null;lastEpipolar=null;epipolarAccepted=0;epipolarRejected=0;visualAccepted=0;visualRejected=0;syncPassed=0;syncFailed=0;pairedPassed=0;preintPassed=0;preintFailed=0;lastPreintegration=null;visualHistory.length=0;pendingObservations.length=0;
   Object.keys(visualReasons).forEach(k=>delete visualReasons[k]);
-  if(window.PAIVIN?.stopBoardCamera)window.PAIVIN.stopBoardCamera();
+  // Do not stop the calibration video before transferring its live stream.
   try{
    if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){
     const p=await DeviceMotionEvent.requestPermission();
@@ -191,7 +196,8 @@
    visionWorker.onmessage=receiveWorkerMessage;
    visionWorker.onerror=e=>{workerErrors++;workerBusy=false;show('视觉 Worker 加载或运行失败：'+(e.message||'unknown'))};
    visionWorker.postMessage({type:'reset',session:workerSession});
-   stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480},frameRate:{ideal:20}}});
+   sharedCameraHandoff=window.PAIVIN?.handoffCamera?.()||null;
+   stream=sharedCameraHandoff?.stream||await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480},frameRate:{ideal:20}}});
    const video=$('vioVideo');video.srcObject=stream;await video.play();
    timer=setInterval(sampleFrame,100);
    $('vioStart').disabled=true;$('vioStop').disabled=false;
@@ -213,9 +219,12 @@
    cameraExposureTimestampAvailable:false,deviceIMUExtrinsicsCalibrated:false,wasmVioEstimatorConnected:false,
    visualRotationModuleAvailable:true,visualAttitudeCorrectionEnabled:false,
    calibrationReadiness:calibrationStatus(),
-   cameraFrameGeometry:{tracking:trackSourceGeometry,compatibility:(()=>{
+   cameraFrameGeometry:{tracking:trackSourceGeometry,reusedCalibrationStream:!!sharedCameraHandoff,
+    compatibility:(()=>{
     let focal=null;try{focal=JSON.parse(localStorage.getItem('pai-vin-focal-candidate-v1')||'null')}catch(e){}
-    return PAIVioViewport.compatibility(focal?.boardSourceGeometry,trackSourceGeometry);
+    return sharedCameraHandoff?PAIVioViewport.compatibility(sharedCameraHandoff.boardGeometry,trackSourceGeometry,
+     {sameStream:true,intrinsics:sharedCameraHandoff.focal}):
+     PAIVioViewport.compatibility(focal?.boardSourceGeometry,trackSourceGeometry);
    })(),activeIntrinsics:'unverified_nominal',calibrationCandidateUsedForTracking:false},
    imuPreintegrationDiagnostic:{passed:preintPassed,failed:preintFailed,last:lastPreintegration,
     gravityCompensated:false,metricPoseAvailable:false,usesBrowserReceiptTimestamps:true},

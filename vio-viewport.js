@@ -30,11 +30,19 @@ function transform(K,from,to){
   width:to.canvasWidth,height:to.canvasHeight,
   verified:false,source:'same_source_frame_coordinate_transform_only'};
 }
-function compatibility(calibration,tracking){
+function compatibility(calibration,tracking,opts={}){
  if(!calibration?.ok||!tracking?.ok)return {ok:false,reason:'missing_frame_geometry'};
  if(calibration.sourceWidth!==tracking.sourceWidth||calibration.sourceHeight!==tracking.sourceHeight)
   return {ok:false,reason:'source_resolution_mismatch',calibrationSource:[calibration.sourceWidth,calibration.sourceHeight],
    trackingSource:[tracking.sourceWidth,tracking.sourceHeight]};
+ if(opts.sameStream===true){
+  const transformed=opts.intrinsics?transform(opts.intrinsics,calibration,tracking):null;
+  return {ok:true,reason:'same_live_camera_stream',sameSourceDimensions:true,
+   candidateCoordinateTransformAvailable:!!(transformed?.ok),
+   candidateIntrinsics:transformed?.ok?transformed:null,
+   candidateVerified:false,metricPoseAvailable:false,
+   exposureTimeKnown:false,externalCalibrationVerified:false};
+ }
  // Separate media streams may select a different active camera/lens/FOV even
  // when the image dimensions and deviceId happen to match.
  return {ok:false,reason:'independent_stream_fov_unverified',

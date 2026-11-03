@@ -4,6 +4,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 let boardStream=null,snapshot=false,corners=[],result=null;
+ let calibrationStreamOwned=false;
  const focalSamples=[];
  const focalStatus=$('boardFocalStatus');
  const focalSay=message=>{if(focalStatus)focalStatus.textContent=message};
@@ -38,17 +39,27 @@ function draw(){
  if(corners.length===4){ctx.beginPath();corners.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();ctx.stroke()}
 }
 function closeCamera(){
- if(boardStream)boardStream.getTracks().forEach(t=>t.stop());
+ if(boardStream&&calibrationStreamOwned)boardStream.getTracks().forEach(t=>t.stop());
+ calibrationStreamOwned=false;
  boardStream=null;$('boardCamera').srcObject=null;$('boardSnap').disabled=true;
+}
+function handoffCamera(){
+ if(!boardStream||!boardStream.getVideoTracks().some(t=>t.readyState==='live'))return null;
+ const transfer={stream:boardStream,boardGeometry:boardSourceGeometry,
+  focal:focalLastResult?.ok?{...focalLastResult}:null};
+ boardStream=null;calibrationStreamOwned=false;
+ $('boardCamera').srcObject=null;$('boardSnap').disabled=true;
+ return transfer;
 }
 $('boardOpen').onclick=async()=>{
  if(boardStream)return;
  // Avoid competing rear-camera streams with the VIO sensor probe.
  if(!$('vioStart').disabled){/* VIO is not running */}else return say('请先停止 VIO 采集，再开启标定摄像头');
  try{
-  boardStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:720},height:{ideal:960}}});
+  boardStream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480},frameRate:{ideal:20}}});
+  calibrationStreamOwned=true;
   $('boardCamera').srcObject=boardStream;await $('boardCamera').play();
-  $('boardSnap').disabled=false;say('标定摄像头已开启。请使标记纸完整进入画面');
+  $('boardSnap').disabled=false;say('标定摄像头已开启。可连续拍摄多视角；结束后直接点击开始 VIO 采集，复用同一摄像头会话。');
  }catch(e){closeCamera();say('相机启动失败：'+e.message)}
 };
 $('boardSnap').onclick=()=>{
@@ -62,7 +73,7 @@ $('boardSnap').onclick=()=>{
  snapCtx.fillStyle='#07101d';snapCtx.fillRect(0,0,w,h);
  snapCtx.drawImage(v,(w-ww)/2,(h-hh)/2,ww,hh);
  snapshot=true;corners=[];result=null;
- closeCamera();
+ // Preserve live camera stream across calibration snapshots.
  try{
   const pixels=snapCtx.getImageData(0,0,w,h).data;
   const detected=VINBoardDetect.detect(pixels,w,h);
@@ -99,6 +110,6 @@ try{
  if(saved?.schema==='pai-vin-a4-plane-v1'&&saved.metricPlaneOnly===true)say('已读取之前保存的 A4 平面参照；可重新拍摄');
 }catch(e){}
 window.addEventListener('pagehide',closeCamera);
-window.PAIVIN={stopBoardCamera:closeCamera};
+window.PAIVIN={stopBoardCamera:closeCamera,handoffCamera};
 draw();
 })();
