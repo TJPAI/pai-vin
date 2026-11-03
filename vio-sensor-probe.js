@@ -11,6 +11,7 @@
  const trackContext=trackCanvas.getContext('2d',{willReadFrequently:true});
  let lastTrackingTime=-Infinity,lastTrackingReport=null;
  let stream=null,timer=null,listener=null,framesSeen=0;
+ let initializer=null,attitude=null,initAttemptAt=-Infinity,initReason='等待静止初始化';
  const show=s=>{$('vioStatus').textContent=s};
  function report(){
   const r=buffer.report(),last=buffer.frames.at(-1),first=buffer.frames[0];
@@ -18,6 +19,11 @@
   $('vioNumbers').textContent='视频帧 '+r.cameraFrames+' · IMU '+r.imuSamples+' · 帧率 '+r.cameraRateHz.toFixed(1)+' Hz · IMU '+r.imuRateHz.toFixed(1)+' Hz · 同步窗 '+(win.ok?'可用':'不可用 '+win.reason);
   const q=lastTrackingReport;
   $('vioTrackNumbers').textContent=q?'图像跟踪点 '+q.total+' · 连续继承 '+q.retained+' · 5帧以上 '+q.longLived+' · 丢失 '+q.lost+' · 平均寿命 '+q.avgAge.toFixed(1)+' 帧':'尚未获得连续视觉特征';
+  const sensor=$('vioInitStatus');
+  if(sensor){
+   if(attitude){const state=attitude.snapshot();sensor.textContent='静止初始化成功 · 陀螺仪偏置 '+state.gyroBias.map(x=>x.toFixed(4)).join(', ')+' rad/s · IMU 姿态更新 '+state.samples+' 次 · 无视觉融合及米制位姿';}
+   else sensor.textContent='保持手机静止约 2 秒以初始化 IMU：'+initReason;
+  }
   return {r,win};
  }
  function sampleFrame(){
@@ -45,13 +51,24 @@
  async function start(){
   if(stream)return;
   buffer.reset();tracker.reset();framesSeen=0;lastTrackingTime=-Infinity;lastTrackingReport=null;
+  initializer=null;attitude=null;initAttemptAt=-Infinity;initReason='等待静止初始化';
   if(window.PAIVIN?.stopBoardCamera)window.PAIVIN.stopBoardCamera();
   try{
    if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){
     const p=await DeviceMotionEvent.requestPermission();
     if(p!=='granted')throw Error('IMU 权限未授权');
    }
-   listener=e=>{const s=PAIVioSensor.fromDeviceMotion(e,performance.now());if(s)buffer.addImu(s)};
+   listener=e=>{
+    const s=PAIVioSensor.fromDeviceMotion(e,performance.now());
+    if(!s||!buffer.addImu(s))return;
+    if(attitude){const updated=attitude.push(s);if(!updated.ok)initReason='姿态传播暂停：'+updated.reason;return}
+    if(s.t-initAttemptAt<500)return;
+    initAttemptAt=s.t;
+    const recent=buffer.imu.filter(x=>x.t>=s.t-2500);
+    initializer=PAIVioInit.initialize(recent,{minSamples:80,durationMs:1500});
+    if(initializer.ok){attitude=new PAIVioInit.Attitude(initializer);attitude.push(s);initReason='完成'}
+    else initReason=initializer.reason;
+   };
    window.addEventListener('devicemotion',listener);
    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480},frameRate:{ideal:20}}});
    const video=$('vioVideo');video.srcObject=stream;await video.play();
@@ -73,6 +90,8 @@
    metricPoseAvailable:false,containsPhotos:false,containsFrames:false,
    transport:r,window:win.ok?{ok:true,dt:win.dt,maxGapMs:win.maxGapMs}:win,
    visualTracking:lastTrackingReport?{total:lastTrackingReport.total,retained:lastTrackingReport.retained,longLived:lastTrackingReport.longLived,avgAge:lastTrackingReport.avgAge,medianError:lastTrackingReport.medianError}:null,
+   inertialInitialization:initializer?.ok?{ok:true,gyroBias:initializer.gyroBias,gravityDevice:initializer.gravityDevice,gravityMagnitude:initializer.gravityMagnitude,gyroStd:initializer.gyroStd,accelStd:initializer.accelStd}: {ok:false,reason:initReason},
+   inertialAttitude:attitude?attitude.snapshot():null,
    samples:buffer.imu.slice(-300).map(({t,gx,gy,gz,ax,ay,az})=>({t,gx,gy,gz,ax,ay,az}))};
   const url=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
   const a=document.createElement('a');a.href=url;a.download='pai-vin-vio-sensors-'+Date.now()+'.json';
