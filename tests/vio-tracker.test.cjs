@@ -38,10 +38,15 @@ function fractionalShift(a,dx,dy){
  }
  return out;
 }
-const frac=fractionalShift(image,.65,.35);
+// Smooth band-limited texture is the correct LK model; white pixel noise
+// violates brightness-constancy linearization and should not be a ground truth.
+const pattern=new Uint8Array(W*H);
+for(let y=0;y<H;y++)for(let x=0;x<W;x++)
+ pattern[y*W+x]=Math.max(0,Math.min(255,Math.round(128+37*Math.sin(x*.19+y*.13)+34*Math.cos(x*.14-y*.20)+23*Math.sin(x*.31-y*.16))));
+const frac=fractionalShift(pattern,.65,.35);
 const estimates=[];
 for(let y=30;y<160;y+=16)for(let x=30;x<225;x+=17){
- const q=V.refineLK(image,frac,W,H,x,y,x+1,y);
+ const q=V.refineLK(pattern,frac,W,H,x,y,x+1,y);
  if(q)estimates.push(Math.hypot(q.x-x-.65,q.y-y-.35));
 }
 assert.ok(estimates.length>=30,'KLT must refine textured tracks');
