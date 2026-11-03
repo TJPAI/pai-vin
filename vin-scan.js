@@ -6,7 +6,7 @@
  const $=id=>document.getElementById(id);
  const canvas=document.createElement('canvas');canvas.width=VINFeatures.W;canvas.height=VINFeatures.H;
  const context=canvas.getContext('2d',{willReadFrequently:true});
- let graph=new VINLandmarks.Graph(),scanStream=null,scanTimer=null,recTimer=null,db=null;
+ let graph=new VINLandmarks.Graph(),sketch=new VINPath.Sketch(),scanStream=null,scanTimer=null,recTimer=null,db=null;
  let scanBusy=false,recBusy=false,lastPlace=-1,confirmed=0,recognitions=[];
  const say=(id,t)=>{if($(id))$(id).textContent=t};
  const buttons=()=>{if($('scanStart'))$('scanStart').disabled=!!scanStream;
@@ -34,13 +34,15 @@
    req.onerror=()=>reject(req.error||Error('Storage failure'));
   });
  }
- async function save(){await transact('put',graph.serialize(),'current')}
+ async function save(){await transact('put',{...graph.serialize(),voSketch:sketch.serialize()},'current')}
  async function load(){
   const result=await transact('get','current');
-  if(result){graph=new VINLandmarks.Graph(result);showGraph();say('scanStatus','已恢复本机视觉地图：'+graph.frames.length+' 关键帧。此图尚无米制坐标。')}
+  if(result){graph=new VINLandmarks.Graph(result);try{sketch=new VINPath.Sketch(result.voSketch)}catch(e){sketch=new VINPath.Sketch()}showGraph();say('scanStatus','已恢复本机视觉地图：'+graph.frames.length+' 关键帧。此图尚无米制坐标。')}
  }
  function showGraph(active=-1){
   VINLandmarks.render($('visualGraph'),graph,active);
+  VINPath.render($('voCanvas'),sketch);
+  say('voScanStatus','可信相对运动段：'+(sketch.nodes.length-1)+'；不表示米制距离，丢失段不推算。');
   if($('recognitionQuality')&&graph.frames.length===0)say('recognitionQuality','没有保存的视觉关键帧');
  }
  async function scanTick(){
@@ -51,6 +53,11 @@
    if(!pts)return;
    const r=graph.add(pts,Date.now());
    if(r.added){
+    if(graph.frames.length>=2){
+      const prev=graph.frames[graph.frames.length-2];
+      const step=VINPath.parseStep(prev.points,pts,VINGeometry,VINVO);
+      if(step.ok)sketch.append(step);else sketch.rejected++;
+    }
     showGraph(graph.frames.length-1);
     await save();
    }
@@ -91,13 +98,13 @@
  async function clear(){
   if(scanStream)return say('scanStatus','请先停止扫描');
   if(!confirm('确定清空已保存的视觉关键帧地图？'))return;
-  graph=new VINLandmarks.Graph();recognitions=[];lastPlace=-1;confirmed=0;
+  graph=new VINLandmarks.Graph();sketch=new VINPath.Sketch();recognitions=[];lastPlace=-1;confirmed=0;
   try{await transact('delete','current');showGraph();say('scanStatus','视觉地图已清空。')}
   catch(e){say('scanStatus','清空失败：'+e.message)}
  }
  function exportMap(){
   if(!graph.frames.length)return say('scanStatus','目前没有可导出的视觉地图');
-  const data=new Blob([JSON.stringify(graph.serialize())],{type:'application/json'});
+  const data=new Blob([JSON.stringify({...graph.serialize(),voSketch:sketch.serialize()})],{type:'application/json'});
   const url=URL.createObjectURL(data),a=document.createElement('a');
   a.href=url;a.download='pai-vin-visual-graph-'+new Date().toISOString().slice(0,10)+'.json';
   document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
