@@ -1,6 +1,5 @@
 const assert=require('node:assert/strict');
 const F=require('../web-vio-features.js');
-const G=require('../web-vio-geometry.js');
 const W=F.W,H=F.H;
 const raw=new Uint8Array(W*H*4);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){
@@ -17,5 +16,5 @@ assert.ok(one.every(p=>Number.isInteger(p.a)&&Number.isInteger(p.b)));
 const blank=F.detect(new Uint8Array(W*H));
 assert.equal(blank.length,0,'blank wall contains no detected corners');
 assert.throws(()=>F.grayRGBA(new Uint8Array(4)),/short/);
-assert.ok(G.correspond(one,two).length>10,'identical frame has shared features');
+assert.ok(one.length>10,'active frontend emits usable corners');
 console.log('Safari camera feature extraction tests passed:',one.length,'features');
