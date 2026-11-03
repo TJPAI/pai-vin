@@ -4,10 +4,10 @@
 (()=>{
 'use strict';
 const $=id=>document.getElementById(id);
-const W=256,H=192,MAX=60,INTERVAL=1050;
+const W=256,H=192,MAX=60,INTERVAL=1050,TRACK_INTERVAL=240;
 const cv=document.createElement('canvas');cv.width=W;cv.height=H;
 const ctx=cv.getContext('2d',{willReadFrequently:true});
-let stream=null,mode='',timer=null,busy=false,frames=[],db=null,imu=null;
+let stream=null,mode='',timer=null,trackTimer=null,busy=false,frames=[],db=null,imu=null;\nlet lastTrackPoints=null,trackFrames=0,trackGood=0,lastTrackTime=0,visualMotion=null;
 let queries=0,hits=0,attempts=0,lastCandidate=-1,candidateStreak=0,lastConfirmed=-1,route=[];
 const set=(id,v)=>{const el=$(id);if(el)el.textContent=v};
 const status=v=>set('status',v);
@@ -25,16 +25,30 @@ function transaction(kind,method,...args){
   request.onsuccess=()=>ok(request.result);request.onerror=()=>fail(request.error);
  });
 }
-const pattern=(()=>{
- const pairs=[];let seed=0x327a41b9;
- const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
- for(let i=0;i<64;i++){
-  const p=[];
-  for(let j=0;j<2;j++)p.push([Math.floor(rand()*17)-8,Math.floor(rand()*17)-8]);
-  pairs.push(p);
- }
- return pairs;
-})();
+function features(){
+ if(!stream||$('camera').readyState<2)return [];
+ ctx.drawImage($('camera'),0,0,W,H);
+ const raw=ctx.getImageData(0,0,W,H).data;
+ return VINFeatures.detect(VINFeatures.grayRGBA(raw));
+}
+function showMotion(v){
+ if(!v){set('trackQuality','等待画面');set('visualDelta','—');return}
+ set('trackQuality',v.accepted?'稳定跟踪 · '+v.inliers+' 内点':'跟踪不足 · '+v.inliers+' 内点');
+ set('visualDelta',v.accepted?('视觉帧间旋转 '+v.angle.toFixed(1)+'° · 图像尺度 ×'+v.scale.toFixed(3)):'旋转/尺度不可置信');
+ set('trackRate',trackGood+'/'+trackFrames);
+}
+function track(){
+ if(!stream||!mode||busy||$('camera').readyState<2)return;
+ try{
+  const now=performance.now(),pts=features();
+  if(lastTrackPoints&&lastTrackPoints.length>=8&&pts.length>=8){
+   const v=VINGeometry.verify(lastTrackPoints,pts);
+   if(v.accepted)trackGood++;
+   trackFrames++;visualMotion=v;showMotion(v);
+  }else{set('trackQuality','纹理不足，请寻找有边缘的区域')}
+  lastTrackPoints=pts;lastTrackTime=now;
+ }catch(e){set('trackQuality','跟踪错误：'+e.message)}
+}
 function drawMap(active=-1){
  set('count',frames.length);
  const holder=$('timeline');holder.replaceChildren();
@@ -137,14 +151,14 @@ async function tick(){
  finally{busy=false}
 }
 function start(which){
- if(!stream)return status('请先开启摄像头');
+ if(!stream)return status('请先开启摄像头');\n if(typeof VINFeatures==='undefined')return status('特征模块未加载，请刷新页面');
  if(which==='localization'&&!frames.length)return status('请先建立关键帧地图');
  if(mode)return;
- mode=which;queries=0;hits=0;attempts=0;lastCandidate=-1;candidateStreak=0;lastConfirmed=-1;route=[];set('route','—');set('hits','0/0');
+ mode=which;lastTrackPoints=null;trackFrames=0;trackGood=0;visualMotion=null;set('trackRate','0/0');showMotion(null);queries=0;hits=0;attempts=0;lastCandidate=-1;candidateStreak=0;lastConfirmed=-1;route=[];set('route','—');set('hits','0/0');
  status(which==='mapping'?'开始采集视觉关键帧':'开始检索已有视觉地图');
- toggleButtons();tick();timer=setInterval(tick,INTERVAL);
+ toggleButtons();tick();timer=setInterval(tick,INTERVAL);trackTimer=setInterval(track,TRACK_INTERVAL);
 }
-function stop(){clearInterval(timer);timer=null;mode='';toggleButtons();status('已停止。地图关键帧：'+frames.length)}
+function stop(){clearInterval(timer);timer=null;clearInterval(trackTimer);trackTimer=null;lastTrackPoints=null;mode='';toggleButtons();status('已停止。地图关键帧：'+frames.length)}
 async function clear(){
  if(!confirm('确定清空本机视觉地图？此操作不能恢复。'))return;
  frames=[];await transaction('readwrite','delete','current');drawMap();toggleButtons();status('地图已清空');
