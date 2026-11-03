@@ -11,13 +11,13 @@ video{width:100%;aspect-ratio:4/3;object-fit:cover;background:#04080d;border-rad
 #timeline{display:flex;gap:4px;overflow:auto;padding:7px 0 3px}#timeline .mark{min-width:28px;height:44px;border-radius:6px;border:1px solid #46698e;background:#273e56;font-size:10px;display:flex;align-items:center;justify-content:center}
 #timeline .mark.active{border:2px solid #6de9b2;background:#295d50}a{color:#a9d3ff}
 </style></head>
-<body><main><a href="./">← 返回 PAI-VIN</a><h1>Safari 视觉重定位 <small>实验版 V0.8</small></h1>
+<body><main><a href="./">← 返回 PAI-VIN</a><h1>Safari 视觉重定位 <small>实验版 V0.9</small></h1>
 <p class="sub">浏览器本地计算 · 视觉关键帧匹配 · IMU 方向观测</p>
 <section class="card"><h2>摄像头与传感器</h2>
 <video id="camera" muted autoplay playsinline></video>
 <div class="grid" style="margin-top:8px"><button id="openCamera">开启后置相机</button><button id="motionBtn" class="alt">授权 IMU</button></div>
 <p class="note" id="sensorStatus">相机关闭 · IMU 未授权</p></section>
-<section class="card"><h2>第一次：建立视觉关键帧地图</h2><p>持手机缓慢移动、尽量涵盖不同视角。点击采集后每约 1 秒尝试保存一个不同视角的关键帧，最多 60 帧；只保存低分辨率特征，不上传画面。</p>
+<section class="card"><h2>手机本地连续视觉跟踪（实验）</h2><p>采集期间每约 240 ms 对连续摄像头帧进行视觉特征匹配和几何一致性检查。</p><p>跟踪质量：<span id="trackQuality" class="stat">尚未开始</span></p><p>视觉帧间变化：<span id="visualDelta" class="stat">—</span></p><p>跟踪有效率：<span id="trackRate" class="stat">0/0</span></p><p class="note">帧间旋转与图像尺度属于图像平面相对变换，不能作为手机世界坐标中的航向、位移或真实距离。</p></section>\n<section class="card"><h2>第一次：建立视觉关键帧地图</h2><p>持手机缓慢移动、尽量涵盖不同视角。点击采集后每约 1 秒尝试保存一个不同视角的关键帧，最多 60 帧；只保存低分辨率特征，不上传画面。</p>
 <div class="grid"><button id="startMap">开始建图</button><button id="stopMap" class="alt" disabled>停止建图</button></div>
 <p>已有关键帧：<span id="count" class="stat">0</span> / 60</p><div id="timeline"></div>
 <div class="grid"><button id="saveMap" class="alt">保存地图到本机</button><button id="clearMap" class="alt">清空地图</button></div>
@@ -30,7 +30,7 @@ video{width:100%;aspect-ratio:4/3;object-fit:cover;background:#04080d;border-rad
 <p>IMU 朝向：<span id="heading" class="stat">未取得</span></p>
 <p>状态：<span id="status" class="stat">就绪</span></p></section>
 <section class="card"><h2>工程边界</h2>
-<p class="note">这里运行的是摄像头局部特征检测、跨帧场景检索（相似变换几何验证、空间覆盖和连续确认）及方向传感器读取。可用来验证 Safari/PWA 的移动端视觉地图识别，但尚不等同于视觉惯性 SLAM：没有三角化、完整相机位姿求解、BA、米制尺度或 0.5 米精度保证。IMU 朝向仅供观测，目前没有接入视觉融合滤波。</p>
+<p class="note">这里运行的是摄像头局部特征检测、跨帧场景检索（相似变换几何验证、空间覆盖和连续确认）及方向传感器读取。可用来验证 Safari/PWA 的移动端视觉地图识别，但尚不等同于视觉惯性 SLAM：有连续帧视觉平面运动估计，但没有三角化、完整相机位姿求解、BA、米制尺度或 0.5 米精度保证。IMU 朝向仅供观测，目前没有接入视觉融合滤波。</p>
 <p class="note">所有摄像头画面和关键帧特征仅留在设备端。不要在不同浏览器/主屏幕入口之间假定 IndexedDB 自动同步。</p></section>
-</main><script src="./web-vio-geometry.js"></script><script src="./web-vio-demo.js"></script><script>if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(()=>{});</script>
+</main><script src="./web-vio-features.js"></script><script src="./web-vio-geometry.js"></script><script src="./web-vio-demo.js"></script><script>if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(()=>{});</script>
 </body></html>
