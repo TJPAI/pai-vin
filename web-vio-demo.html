@@ -11,7 +11,7 @@ video{width:100%;aspect-ratio:4/3;object-fit:cover;background:#04080d;border-rad
 #timeline{display:flex;gap:4px;overflow:auto;padding:7px 0 3px}#timeline .mark{min-width:28px;height:44px;border-radius:6px;border:1px solid #46698e;background:#273e56;font-size:10px;display:flex;align-items:center;justify-content:center}
 #timeline .mark.active{border:2px solid #6de9b2;background:#295d50}a{color:#a9d3ff}
 </style></head>
-<body><main><a href="./">← 返回 PAI-VIN</a><h1>Safari 视觉重定位 <small>实验版 V0.7</small></h1>
+<body><main><a href="./">← 返回 PAI-VIN</a><h1>Safari 视觉重定位 <small>实验版 V0.8</small></h1>
 <p class="sub">浏览器本地计算 · 视觉关键帧匹配 · IMU 方向观测</p>
 <section class="card"><h2>摄像头与传感器</h2>
 <video id="camera" muted autoplay playsinline></video>
@@ -26,11 +26,11 @@ video{width:100%;aspect-ratio:4/3;object-fit:cover;background:#04080d;border-rad
 <div class="grid"><button id="startLocalize">开始重定位</button><button id="stopLocalize" class="alt" disabled>停止重定位</button></div>
 <p>当前识别：<span id="matchLabel" class="stat">未开始</span></p>
 <p>匹配结果：<span id="matchDetails" class="stat">—</span></p>
-<p>重定位成功帧：<span id="hits" class="stat">0/0</span></p>
+<p>重定位成功帧：<span id="hits" class="stat">0/0</span></p><p>连续识别的场景：<span id="route" class="stat">—</span></p>
 <p>IMU 朝向：<span id="heading" class="stat">未取得</span></p>
 <p>状态：<span id="status" class="stat">就绪</span></p></section>
 <section class="card"><h2>工程边界</h2>
-<p class="note">这里运行的是摄像头局部特征检测、跨帧场景检索和方向传感器读取。可用来验证 Safari/PWA 的移动端视觉地图识别，但尚不等同于视觉惯性 SLAM：没有三角化、完整相机位姿求解、BA、米制尺度或 0.5 米精度保证。IMU 朝向仅供观测，目前没有接入视觉融合滤波。</p>
+<p class="note">这里运行的是摄像头局部特征检测、跨帧场景检索（相似变换几何验证、空间覆盖和连续确认）及方向传感器读取。可用来验证 Safari/PWA 的移动端视觉地图识别，但尚不等同于视觉惯性 SLAM：没有三角化、完整相机位姿求解、BA、米制尺度或 0.5 米精度保证。IMU 朝向仅供观测，目前没有接入视觉融合滤波。</p>
 <p class="note">所有摄像头画面和关键帧特征仅留在设备端。不要在不同浏览器/主屏幕入口之间假定 IndexedDB 自动同步。</p></section>
-</main><script src="./web-vio-demo.js"></script><script>if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(()=>{});</script>
+</main><script src="./web-vio-geometry.js"></script><script src="./web-vio-demo.js"></script><script>if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(()=>{});</script>
 </body></html>
