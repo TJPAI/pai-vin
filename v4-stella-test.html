@@ -39,7 +39,7 @@ async function loadBuildInfo(){
     const engineSha=info.stellaSourceCommit?info.stellaSourceCommit.slice(0,10):'无';
     const engineRun=info.stellaWasmRunId?('#'+info.stellaWasmRunId):'未打包';
     const engineStatus=info.stellaWasmRunId?'已打包':'未打包';
-    label.textContent='页面版本 '+appSha+' · Stella WASM '+engineRun+'（'+engineStatus+'；源码 '+engineSha+'） · 部署 '+(info.builtAt||'未知');
+    label.textContent='页面版本 '+appSha+' · Stella WASM '+engineRun+'（'+engineStatus+'；构建提交 '+engineSha+'） · 部署 '+(info.builtAt||'未知');
   }catch(error){
     label.textContent='版本信息不可用，无法确认当前页面与 WASM 是否一致；请刷新后重试';
   }
