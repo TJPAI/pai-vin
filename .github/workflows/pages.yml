@@ -130,9 +130,9 @@ jobs:
           fi
       - name: Write deployed frontend and Stella WASM version metadata
         env:
-          APP_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
+          export APP_COMMIT="$(git rev-parse HEAD)"
           python3 - <<'PY'
           import datetime
           import json
