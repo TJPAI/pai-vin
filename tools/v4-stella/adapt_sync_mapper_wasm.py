@@ -147,6 +147,43 @@ void mapping_module::run() {"""),
 #endif
     if (*max_num_valid_pts_iter < min_num_valid_pts_) {""")
     ]
+    # Upstream automatic relocalization is gated on bow_db_. Browser tests
+    # currently load no BoW vocabulary, so a turn-induced Lost state can
+    # otherwise never recover. Reuse REAL upstream robust descriptor matching,
+    # PnP/RANSAC, pose and local-map refinement against bounded recent keyframes.
+    # No dead reckoning and no fabricated pose are used in this branch.
+    files["src/stella_vslam/tracking_module.cc"].extend([
+        (
+            '#include "stella_vslam/data/landmark.h"',
+            '#include "stella_vslam/data/landmark.h"\n#include "stella_vslam/data/keyframe.h"'
+        ),
+        (
+            """    // update the local map and optimize current camera pose
+    unsigned int fixed_keyframe_id_threshold = map_db_->get_fixed_keyframe_id_threshold();""",
+            """#ifdef __EMSCRIPTEN__
+    else if (!bow_db_ && enable_auto_relocalization_) {
+        auto candidates = map_db_->get_all_keyframes();
+        std::sort(candidates.begin(), candidates.end(),
+                  [](const std::shared_ptr<data::keyframe>& a,
+                     const std::shared_ptr<data::keyframe>& b) {
+                      return a->id_ > b->id_;
+                  });
+        if (candidates.size() > 12) candidates.resize(12);
+        // Use Stella's REAL robust feature matches and PnP pose solution.
+        succeeded = relocalizer_.reloc_by_candidates(curr_frm_, candidates, true);
+        spdlog::info("PAI_STELLA_WASM_RELOC frame={} candidates={} recovered={}",
+                     curr_frm_.id_, candidates.size(), succeeded ? 1 : 0);
+        if (succeeded) {
+            last_reloc_frm_id_ = curr_frm_.id_;
+            last_reloc_frm_timestamp_ = curr_frm_.timestamp_;
+        }
+    }
+#endif
+
+    // update the local map and optimize current camera pose
+    unsigned int fixed_keyframe_id_threshold = map_db_->get_fixed_keyframe_id_threshold();"""
+        )
+    ])
     changed = {}
     for name, replacements in files.items():
         path = root / name
