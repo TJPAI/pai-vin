@@ -65,6 +65,41 @@ Feature:
   } else {
     console.log('PAI_STELLA_BROWSER_ABI_NO_POSE_YET (initialization, not a failure)');
   }
+  // Continue with distinct, deterministically translated REAL input frames.
+  // This is a stability/deadlock smoke, not a valid 3D/parallax fixture:
+  // it must never claim localization when Stella reports no native pose.
+  const total = 24;
+  let poses = trackRc === 1 ? 1 : 0;
+  let noPoses = trackRc === 0 ? 1 : 0;
+  const moved = new Uint8Array(bytes);
+  for (let frame = 1; frame <= total; frame++) {
+    const shiftX = Math.round(9 * Math.sin(frame * 0.3));
+    const shiftY = Math.round(6 * Math.cos(frame * 0.25));
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const sx = (x + shiftX + width) % width;
+        const sy = (y + shiftY + height) % height;
+        const from = (sy * width + sx) * 4;
+        const to = (y * width + x) * 4;
+        moved[to] = pixels[from];
+        moved[to+1] = pixels[from+1];
+        moved[to+2] = pixels[from+2];
+        moved[to+3] = 255;
+      }
+    }
+    mod.HEAPU8.set(moved, p);
+    const rc = mod.ccall('pai_stella_track_rgba','number',
+      ['number','number','number','number','number'],
+      [p,width,height,(frame+1)/30,pose]);
+    assert([0,1].includes(rc), `Native Stella failure at frame ${frame}: ${rc}`);
+    if (rc === 1) {
+      poses++;
+      const matrix = Array.from(new Float64Array(mod.HEAPU8.buffer,pose,16));
+      assert(matrix.every(Number.isFinite), 'Nonfinite native pose');
+    } else noPoses++;
+  }
+  console.log(`PAI_STELLA_BROWSER_ABI_MULTIFRAME_PASS frames=${total+1} poses=${poses} no_pose=${noPoses} fixture=2D_translation_not_3D_parallax`);
+  // Pose count is diagnostic only: not an acceptance criterion for this 2D fixture.
   mod._free(p); mod._free(pose); mod._pai_stella_destroy();
   console.log('PAI_STELLA_BROWSER_ABI_NODE_PASS');
 })().catch(e => { console.error(e); process.exitCode = 1; });
