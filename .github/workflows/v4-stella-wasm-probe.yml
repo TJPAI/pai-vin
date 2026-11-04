@@ -283,10 +283,26 @@ jobs:
           echo "$rc" > probe-results/sqlite-configure-exit-code.txt
           echo "With WASM SQLite3: stella CMake configure exit $rc (NOT full SLAM compile)" >> "$GITHUB_STEP_SUMMARY"
           tail -n 70 probe-results/stella-sqlite-configure.log
-      - name: Seventh probe - install pinned g2o WASM and check stella's full solver dependency
+      - name: Restore pinned g2o WASM static dependencies
+        id: g2o-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /tmp/pai-wasm-prefix/lib/libg2o*.a
+            /tmp/pai-wasm-prefix/lib/cmake/g2o
+            /tmp/pai-wasm-prefix/include/g2o
+          key: pai-vin-g2o-fd656273-emsdk3174-eigen3-static-nosse-v1
+      - name: Seventh probe - reuse pinned g2o then build real Stella core
         shell: bash
         run: |
           set -uo pipefail
+          if [ "${{ steps.g2o-cache.outputs.cache-hit }}" = "true" ]; then
+            test -s /tmp/pai-wasm-prefix/lib/libg2o_core.a
+            test -n "$(find /tmp/pai-wasm-prefix -iname '*g2o*config*.cmake' -print -quit)"
+            cfg=0
+            built=0
+            echo 'PAI_STELLA_PINNED_G2O_CACHE_HIT: reuse real WASM g2o archives' >> "$GITHUB_STEP_SUMMARY"
+          else
           git clone --quiet https://github.com/RainerKuemmerle/g2o.git /tmp/pai-g2o-src
           git -C /tmp/pai-g2o-src checkout --detach fd65627348213d56866b24c0b7d054bcf105f0a5
           test "$(git -C /tmp/pai-g2o-src rev-parse HEAD)" = fd65627348213d56866b24c0b7d054bcf105f0a5
@@ -311,6 +327,7 @@ jobs:
           if [ "$built" -eq 0 ]; then
             emmake cmake --install /tmp/pai-g2o-wasm >> probe-results/g2o-wasm-build.log 2>&1
             built=$?
+          fi
           fi
           printf '%s\n' "$cfg" > probe-results/g2o-configure-exit-code.txt
           printf '%s\n' "$built" > probe-results/g2o-build-exit-code.txt
@@ -409,6 +426,15 @@ jobs:
             tail -n 45 probe-results/g2o-wasm-build.log 2>/dev/null || true
           fi
           set -e
+      - name: Save pinned g2o WASM archives for future Stella changes
+        if: ${{ steps.g2o-cache.outputs.cache-hit != 'true' && success() }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /tmp/pai-wasm-prefix/lib/libg2o*.a
+            /tmp/pai-wasm-prefix/lib/cmake/g2o
+            /tmp/pai-wasm-prefix/include/g2o
+          key: pai-vin-g2o-fd656273-emsdk3174-eigen3-static-nosse-v1
       - name: Build and Node-verify real Stella browser RGBA/pose ABI
         shell: bash
         run: |
