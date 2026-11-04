@@ -491,6 +491,19 @@ jobs:
               else
                 echo "Stella synthetic parallax integration FAILED exit=$parallax_rc" >> "$GITHUB_STEP_SUMMARY"
               fi
+              # Independent turn-and-return regression: unlike ABI smoke,
+              # this must actually recover a native pose in the original map.
+              if [ "$parallax_rc" -eq 0 ]; then
+                PAI_TURN_RETURN=1 timeout 170s node tools/v4-stella/stella-parallax-node-smoke.cjs /tmp/stella-vslam/build-wasm-g2o/pai_stella_browser.js > probe-results/stella-turn-return-node.log 2>&1
+                turn_rc=$?
+                echo "$turn_rc" > probe-results/stella-turn-return-exit-code.txt
+                tail -n 35 probe-results/stella-turn-return-node.log
+                if [ "$turn_rc" -eq 0 ]; then
+                  echo 'Stella real synthetic turning-and-returning SAME-MAP native-pose recovery PASS' >> "$GITHUB_STEP_SUMMARY"
+                else
+                  echo 'Stella synthetic turn-return regression FAILED (no valid recovery or no initialized baseline)' >> "$GITHUB_STEP_SUMMARY"
+                fi
+              fi
             fi
           else
             echo "Stella browser ABI link failed exit=$browser_rc" >> "$GITHUB_STEP_SUMMARY"
