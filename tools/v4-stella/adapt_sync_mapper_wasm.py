@@ -259,6 +259,94 @@ void mapping_module::run() {"""),
 #endif
             return true;"""
     )]
+    # A pure-rotation / short-baseline turn makes the essential-matrix
+    # prerequisite geometrically degenerate. For LOST-mode 2D-3D re-localization,
+    # obtain actual ORB correspondences and let the existing EPnP + RANSAC,
+    # reprojection, pose optimization and local-map gates verify the result.
+    # Keep essential-matrix filtering for all ordinary tracking call sites.
+    files["src/stella_vslam/match/robust.h"] = [(
+        """                                          bool use_fixed_seed = false) const;""",
+        """                                          bool use_fixed_seed = false,
+                                          bool validate_essential = true) const;"""
+    )]
+    files["src/stella_vslam/match/robust.cc"] = [
+        (
+            """                                              bool use_fixed_seed) const {
+    // Initialization
+    const auto num_frm_keypts = frm.frm_obs_.undist_keypts_.size();""",
+            """                                              bool use_fixed_seed, bool validate_essential) const {
+    // Initialization
+    const auto num_frm_keypts = frm.frm_obs_.undist_keypts_.size();"""
+        ),
+        (
+            """    // Extract only inliers with RANSAC
+    solve::essential_solver solver(frm.frm_obs_.bearings_, keyfrm->frm_obs_.bearings_, matches, use_fixed_seed);
+    solver.find_via_ransac(1000, true);
+    if (!solver.solution_is_valid()) {
+        return 0;
+    }
+    const auto is_inlier_matches = solver.get_inlier_matches();
+
+    // Save the information
+    for (unsigned int i = 0; i < matches.size(); ++i) {
+        if (!is_inlier_matches.at(i)) {
+            continue;
+        }
+        const auto frm_idx = matches.at(i).first;
+        const auto keyfrm_idx = matches.at(i).second;
+
+        matched_lms_in_frm.at(frm_idx) = keyfrm_lms.at(keyfrm_idx);
+        ++num_inlier_matches;
+    }
+
+    return num_inlier_matches;
+}
+
+unsigned int robust::brute_force_match""",
+            """    // In existing-map relocalization, Essential RANSAC may fail for pure
+    // rotation even when the map's actual 3D points can be matched.
+    if (!validate_essential) {
+        for (const auto& pair : matches) {
+            const auto& lm = keyfrm_lms.at(pair.second);
+            if (!lm || lm->will_be_erased()) continue;
+            matched_lms_in_frm.at(pair.first) = lm;
+            ++num_inlier_matches;
+        }
+        return num_inlier_matches;
+    }
+    // Ordinary tracking still retains its original Essential RANSAC gate.
+    solve::essential_solver solver(frm.frm_obs_.bearings_, keyfrm->frm_obs_.bearings_, matches, use_fixed_seed);
+    solver.find_via_ransac(1000, true);
+    if (!solver.solution_is_valid()) {
+        return 0;
+    }
+    const auto is_inlier_matches = solver.get_inlier_matches();
+    for (unsigned int i = 0; i < matches.size(); ++i) {
+        if (!is_inlier_matches.at(i)) continue;
+        const auto frm_idx = matches.at(i).first;
+        const auto keyfrm_idx = matches.at(i).second;
+        matched_lms_in_frm.at(frm_idx) = keyfrm_lms.at(keyfrm_idx);
+        ++num_inlier_matches;
+    }
+    return num_inlier_matches;
+}
+
+unsigned int robust::brute_force_match"""
+        )
+    ]
+    files["src/stella_vslam/module/relocalizer.cc"].append((
+        """    const auto num_matches = use_robust_matcher ? robust_matcher_.match_frame_and_keyframe(curr_frm, candidate_keyfrm, matched_landmarks)
+                                                : bow_matcher_.match_frame_and_keyframe(candidate_keyfrm, curr_frm, matched_landmarks);""",
+        """#ifdef __EMSCRIPTEN__
+    // Bypass only the degeneracy-prone Essential gate in map relocalization.
+    // EPnP-RANSAC and all downstream geometric/landmark gates stay intact.
+    const auto num_matches = use_robust_matcher ? robust_matcher_.match_frame_and_keyframe(curr_frm, candidate_keyfrm, matched_landmarks, false, false)
+                                                : bow_matcher_.match_frame_and_keyframe(candidate_keyfrm, curr_frm, matched_landmarks);
+#else
+    const auto num_matches = use_robust_matcher ? robust_matcher_.match_frame_and_keyframe(curr_frm, candidate_keyfrm, matched_landmarks)
+                                                : bow_matcher_.match_frame_and_keyframe(candidate_keyfrm, curr_frm, matched_landmarks);
+#endif"""
+    ))
     # Read-only per-frame internal state exported to iPhone diagnostics.
     # Values: tracker state (0 init/1 tracking/2 lost), keyframe count,
     # landmark count, observed ORB count, associated 3D landmark count.
