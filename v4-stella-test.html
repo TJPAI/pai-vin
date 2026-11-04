@@ -12,7 +12,7 @@ canvas{display:block;width:100%;background:#08131f;border-radius:8px}#preview{as
 <h1>PAI-VIN Stella · 原生 WASM 试验</h1>
 <p class="warn">这是 Stella 原生引擎测试，不是已经完成的室内定位系统。只有引擎返回真实位姿才会绘制轨迹。当前单线程 WASM 尚未验证连续建图，0.5 米精度及持久重定位均未实现。</p>
 <section>
-<button id="start">启动 Stella 与摄像头</button><button id="stop" disabled>停止</button>
+<button id="start">启动 Stella 与摄像头</button><button id="stop" disabled>停止</button><button id="export" type="button">导出诊断 JSON</button>
 <label>处理模式 <select id="mode"><option value="track">真实位姿跟踪（试验）</option><option value="features">仅检查真实 ORB 特征</option></select></label>
 <p class="small">相机内参为暂定值，尚未经 iPhone 标定；定位结果不得当作米制坐标使用。</p>
 <p id="status" role="status">未启动</p><p id="counts" class="small">处理帧 0 · 有效位姿 0</p>
@@ -27,6 +27,28 @@ const $=id=>document.getElementById(id);
 const video=$('video'),preview=$('preview'),ctx=preview.getContext('2d',{willReadFrequently:true}),trail=$('trail'),tc=trail.getContext('2d');
 let stream=null,worker=null,running=false,pending=false,sequence=0,frames=0,valid=0,errors=0,raf=0,lastSent=0;
 let parts=[],current=[],lastValidAt=0,hadLoss=false;
+const diagnostics={schema:'pai-vin-stella-browser-diagnostic-v1',app:'Stella C++/WASM',startedAt:null,
+  source:'genuine native Stella only',frames:[],errors:[],init:false};
+function record(type,data){
+ const entry={time:Date.now(),type,...data};
+ if(type==='error')diagnostics.errors.push(entry);
+ else diagnostics.frames.push(entry);
+ if(diagnostics.frames.length>250)diagnostics.frames.shift();
+ if(diagnostics.errors.length>50)diagnostics.errors.shift();
+}
+$('export').onclick=()=>{
+ const out={...diagnostics,exportedAt:new Date().toISOString(),
+   userAgent:navigator.userAgent,processedFrames:frames,nativeValidPoses:valid,
+   erroredFrames:errors,trackingMode:$('mode').value};
+ const json=JSON.stringify(out,null,2);
+ const blob=new Blob([json],{type:'application/json'});
+ const url=URL.createObjectURL(blob);
+ const link=document.createElement('a');link.href=url;
+ link.download='pai-vin-stella-'+Date.now()+'.json';
+ document.body.appendChild(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),5000);
+};
+
 const W=320,H=240;
 function status(s){$('status').textContent=s;}
 function drawTrail(){
@@ -58,13 +80,15 @@ $('start').onclick=async()=>{
   stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480}}});
   video.srcObject=stream;await video.play();
   worker=new Worker('./v4-stella-worker.js');
-  worker.onerror=e=>{errors++;status('Stella Worker 失败：'+(e.message||'未知错误'));stop();};
+  diagnostics.startedAt=new Date().toISOString();
+  worker.onerror=e=>{errors++;record('error',{message:String(e.message||'worker_failed')});status('Stella Worker 失败：'+(e.message||'未知错误'));stop();};
   worker.onmessage=e=>{
    const d=e.data;
-   if(d.type==='ready'){running=true;$('stop').disabled=false;status(d.message);raf=requestAnimationFrame(tick);}
-   if(d.type==='error'){pending=false;errors++;status('Stella 错误：'+d.message);if(errors>3)stop();}
+   if(d.type==='ready'){diagnostics.init=true;record('ready',{message:d.message});running=true;$('stop').disabled=false;status(d.message);raf=requestAnimationFrame(tick);}
+   if(d.type==='error'){pending=false;errors++;record('error',{message:d.message});status('Stella 错误：'+d.message);if(errors>3)stop();}
    if(d.type==='frame'){
     pending=false;frames++;
+    record('frame',{sequence:d.sequence,mode:d.mode,nativePose:!!d.pose,featureCount:d.features??null,pose:d.pose||null});
     if(d.pose){
      const p=[d.pose[12],d.pose[14]];
      if(Number.isFinite(p[0])&&Number.isFinite(p[1])){
