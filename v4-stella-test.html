@@ -13,11 +13,12 @@ canvas{display:block;width:100%;background:#08131f;border-radius:8px}#preview{as
 <p class="warn">这是 Stella 原生引擎测试，不是已经完成的室内定位系统。只有引擎返回真实位姿才会绘制轨迹。当前单线程 WASM 尚未验证连续建图，0.5 米精度及持久重定位均未实现。</p>
 <section>
 <button id="start">启动 Stella 与摄像头</button><button id="stop" disabled>停止</button><button id="export" type="button">导出诊断 JSON</button>
+<label>图像质量 <select id="quality"><option value="rich">480×360 优先特征（推荐）</option><option value="fast">320×240 低负载对照</option></select></label>
 <label>处理模式 <select id="mode"><option value="track">真实位姿跟踪（试验）</option><option value="features">仅检查真实 ORB 特征</option></select></label>
-<p class="small">相机内参为暂定值，尚未经 iPhone 标定；定位结果不得当作米制坐标使用。</p>
+<p class="small">相机内参为近似值，尚未经 iPhone 标定。优先使用纹理丰富的墙面/家具，先侧移20–40厘米再缓慢转弯；单纯原地旋转无法建立可靠单目尺度。</p>
 <p id="status" role="status">未启动</p><p id="counts" class="small">处理帧 0 · 有效位姿 0</p>
 </section>
-<section><h2>实时相机画面（320×240）</h2><video id="video" autoplay muted playsinline style="display:none"></video><canvas id="preview" width="320" height="240"></canvas></section>
+<section><h2>实时相机画面（可切换分辨率）</h2><video id="video" autoplay muted playsinline style="display:none"></video><canvas id="preview" width="320" height="240"></canvas></section>
 <section><h2>Stella 实时俯视轨迹（非米制）</h2><canvas id="trail" width="340" height="340"></canvas><p id="tracking" class="small">没有原生位姿；不会绘制虚构轨迹</p></section>
 <section><h2>技术状态</h2><p class="small">前端通过独立 Worker 调用 Stella C++ WASM 的 RGBA→ORB/位姿接口。没有使用 AlvaAR、IMU 推算或人工生成的轨迹。未能输出位姿时即显示“暂无位姿”。即使本页面能够加载，也不代表连续建图线程或重定位已经可用。</p></section>
 </main>
@@ -39,7 +40,7 @@ function record(type,data){
 $('export').onclick=()=>{
  const out={...diagnostics,exportedAt:new Date().toISOString(),
    userAgent:navigator.userAgent,processedFrames:frames,nativeValidPoses:valid,
-   erroredFrames:errors,trackingMode:$('mode').value};
+   erroredFrames:errors,trackingMode:$('mode').value,quality:quality.value,width:W,height:H};
  const json=JSON.stringify(out,null,2);
  const blob=new Blob([json],{type:'application/json'});
  const url=URL.createObjectURL(blob);
@@ -49,7 +50,10 @@ $('export').onclick=()=>{
  setTimeout(()=>URL.revokeObjectURL(url),5000);
 };
 
-const W=320,H=240;
+let W=480,H=360;
+let lastResponseAt=0;
+let lastProcessMs=0;
+const quality = $('quality');
 function status(s){$('status').textContent=s;}
 function drawTrail(){
  tc.fillStyle='#08131f';tc.fillRect(0,0,trail.width,trail.height);
@@ -69,15 +73,18 @@ function stop(){
  running=false;cancelAnimationFrame(raf);raf=0;
  stream?.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;
  worker?.terminate();worker=null;pending=false;
- $('start').disabled=false;$('stop').disabled=true;
+ $('start').disabled=false;$('stop').disabled=true;quality.disabled=false;
  status('已停止');drawTrail();
 }
 $('stop').onclick=stop;
 $('start').onclick=async()=>{
  if(running)return;
- $('start').disabled=true;status('正在申请摄像头权限…');
+ $('start').disabled=true;quality.disabled=true;status('正在申请摄像头权限…');
  try{
-  stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480}}});
+  const rich=quality.value==='rich';
+  W=rich?480:320; H=rich?360:240;
+  preview.width=W;preview.height=H;
+  stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:rich?960:640},height:{ideal:rich?720:480},frameRate:{ideal:30}}});
   video.srcObject=stream;await video.play();
   worker=new Worker('./v4-stella-worker.js');
   diagnostics.startedAt=new Date().toISOString();
@@ -88,7 +95,8 @@ $('start').onclick=async()=>{
    if(d.type==='error'){pending=false;errors++;record('error',{message:d.message});status('Stella 错误：'+d.message);if(errors>3)stop();}
    if(d.type==='frame'){
     pending=false;frames++;
-    record('frame',{sequence:d.sequence,mode:d.mode,nativePose:!!d.pose,featureCount:d.features??null,pose:d.pose||null});
+    record('frame',{sequence:d.sequence,mode:d.mode,nativePose:!!d.pose,featureCount:d.features??null,pose:d.pose||null,processingMs:d.processingMs??null});
+    lastProcessMs=d.processingMs||0;
     if(d.pose){
      const p=[d.pose[12],d.pose[14]];
      if(Number.isFinite(p[0])&&Number.isFinite(p[1])){
@@ -103,14 +111,17 @@ $('start').onclick=async()=>{
     }else{
       $('tracking').textContent='真实 Stella ORB 提取 '+d.features+' 个特征；此模式不会输出位姿';
     }
-    $('counts').textContent='处理帧 '+frames+' · 有效位姿 '+valid+' · 错误 '+errors;
+    $('counts').textContent='处理帧 '+frames+' · 有效位姿 '+valid+' · 最新处理 '+Math.round(lastProcessMs)+' ms · 错误 '+errors;
    }
   };
+  const focal=quality.value==='rich'?410:275;
   const yaml=['Camera:','  name: PAI VIN iPhone WASM probe','  setup: monocular','  model: perspective',
-    '  fx: 300.0','  fy: 300.0','  cx: 160.0','  cy: 120.0','  k1: 0.0','  k2: 0.0','  p1: 0.0','  p2: 0.0','  k3: 0.0',
-    '  fps: 30.0','  cols: 320','  rows: 240','  color_order: RGB','Preprocessing:','  min_size: 320',
-    'Feature:','  name: iPhone WASM ORB','  scale_factor: 1.2','  num_levels: 4',
-    '  ini_fast_threshold: 20','  min_fast_threshold: 7'].join('\n');
+    '  fx: '+focal,'  fy: '+focal,'  cx: '+W/2,'  cy: '+H/2,'  k1: 0.0','  k2: 0.0','  p1: 0.0','  p2: 0.0','  k3: 0.0',
+    '  fps: 30.0','  cols: '+W,'  rows: '+H,'  color_order: RGB','Preprocessing:','  min_size: '+W,
+    'Feature:','  name: iPhone WASM ORB','  scale_factor: 1.2','  num_levels: 6',
+    '  ini_fast_threshold: 12','  min_fast_threshold: 6',
+    'Initializer:','  min_num_valid_pts: 35','  min_num_triangulated_pts: 25','  parallax_deg_threshold: 0.8','  num_ransac_iterations: 150',
+    'Mapping:','  enable_interruption_of_landmark_generation: false'].join('\n');
   worker.postMessage({type:'init',yaml,width:W,height:H});
   status('正在加载真实 Stella WebAssembly 模块…');
  }catch(e){status('启动失败：'+String(e?.message||e));stop();}
