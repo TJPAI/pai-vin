@@ -36,6 +36,9 @@ function imageAt(cameraX, cameraY) {
   if(!process.argv[2])throw Error('Usage: node stella-parallax-node-smoke.cjs <module.js>');
   const factory=require(path.resolve(process.argv[2]));
   const mod=await factory();
+  const preset=process.env.PAI_PARALLAX_PRESET||'baseline';
+  const settings={baseline:{step:0.010,minMatch:50,minTri:50,minParallax:1.0},wide:{step:0.025,minMatch:35,minTri:25,minParallax:0.8},near:{step:0.017,minMatch:25,minTri:15,minParallax:0.5}};
+  const cfg=settings[preset]; if(!cfg)throw Error('Unknown preset: '+preset);
   const yaml=`Camera:
   name: PAI VIN parallax validation fixture
   setup: monocular
@@ -73,7 +76,7 @@ Mapping:
   const poses=[];
   for(let i=0;i<numFrames;i++){
     // Real geometrical camera translation (world frame), not a pose returned.
-    const cameraX=i*0.010, cameraY=Math.sin(i*0.15)*0.009;
+    const cameraX=i*cfg.step, cameraY=Math.sin(i*0.15)*0.009;
     const image=imageAt(cameraX,cameraY);
     mod.HEAPU8.set(image,p);
     const rc=mod.ccall('pai_stella_track_rgba','number',
@@ -95,7 +98,7 @@ Mapping:
   }
   mod._free(p);mod._free(pose);mod._pai_stella_destroy();
   console.log('PAI_STELLA_GEOMETRIC_PARALLAX_MULTIFRAME_PASS', JSON.stringify({
-    frames:numFrames,nativePoses,noPose,firstPose,poseSample:poses.slice(0,3),
+    preset,frames:numFrames,nativePoses,noPose,firstPose,poseSample:poses.slice(0,3),
     caveat:'synthetic two-plane scene; no iPhone or metric accuracy verification'
   }));
   if(nativePoses===0)console.log('PAI_STELLA_PARALLAX_INIT_NOT_YET_VALIDATED');
