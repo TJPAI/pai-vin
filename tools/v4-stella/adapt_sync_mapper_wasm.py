@@ -550,6 +550,29 @@ unsigned int robust::brute_force_match"""
 
 bool tracking_module::relocalize_by_pose"""
     ))
+    # Rotational tracking: when the predicted optical flow exceeds the
+    # normal projection window, retry with a wider geometry-centered search.
+    # This affects candidate discovery only. Pose optimization and the
+    # original minimum inlier count remain mandatory.
+    files["src/stella_vslam/module/frame_tracker.cc"] = [(
+        """    if (num_matches < num_matches_thr_) {
+        spdlog::debug("motion based tracking failed: {} matches < {}", num_matches, num_matches_thr_);
+        return false;
+    }""",
+        """#ifdef __EMSCRIPTEN__
+    if (num_matches < num_matches_thr_) {
+        curr_frm.erase_landmarks();
+        num_matches = projection_matcher.match_current_and_last_frames(curr_frm, last_frm, 4 * margin_);
+        spdlog::info("PAI_STELLA_MOTION_WIDE frame={} matches={} threshold={}",
+                     curr_frm.id_, num_matches, num_matches_thr_);
+    }
+#endif
+    if (num_matches < num_matches_thr_) {
+        spdlog::info("PAI_STELLA_MOTION_REJECT frame={} matches={} threshold={}",
+                     curr_frm.id_, num_matches, num_matches_thr_);
+        return false;
+    }"""
+    )]
     # Read-only per-frame internal state exported to iPhone diagnostics.
     # Values: tracker state (0 init/1 tracking/2 lost), keyframe count,
     # landmark count, observed ORB count, associated 3D landmark count.
