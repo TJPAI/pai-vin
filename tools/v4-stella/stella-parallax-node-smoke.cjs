@@ -20,14 +20,17 @@ function texture(x,y,layer) {
   const cross=(Math.abs(x*textureScale-u-0.5)<0.09||Math.abs(y*textureScale-v-0.5)<0.09)?36:0;
   return Math.min(255,25+(tile*0.68)+grid+cross)|0;
 }
-function imageAt(cameraX, cameraY) {
+function imageAt(cameraX, cameraY, yaw=0) {
   const pixels=new Uint8Array(W*H*4);
   for(let y=0;y<H;y++) for(let x=0;x<W;x++){
     const dx=(x-CX)/FX,dy=(y-CY)/FY;
-    const foreX=cameraX+dx*2.15,foreY=cameraY+dy*2.15;
+    const rayX=Math.cos(yaw)*dx+Math.sin(yaw);
+    const rayZ=Math.cos(yaw)-Math.sin(yaw)*dx;
+    if(rayZ<=0.001){const i=(y*W+x)*4;pixels[i]=pixels[i+1]=pixels[i+2]=0;pixels[i+3]=255;continue;}
+    const foreX=cameraX+rayX*2.15/rayZ,foreY=cameraY+dy*2.15/rayZ;
     const foreground=foreX>-0.55&&foreX<0.1&&foreY>-0.41&&foreY<0.41;
     const depth=foreground?2.15:4.6;
-    const worldX=cameraX+dx*depth,worldY=cameraY+dy*depth;
+    const worldX=cameraX+rayX*depth/rayZ,worldY=cameraY+dy*depth/rayZ;
     let v=texture(worldX,worldY,foreground?1:2);
     const i=(y*W+x)*4; pixels[i]=v;pixels[i+1]=v;pixels[i+2]=v;pixels[i+3]=255;
   }
@@ -72,13 +75,16 @@ Mapping:
   assert.equal(mod.ccall('pai_stella_create','number',['string'],[yaml]),0);
   const p=mod._malloc(W*H*4),pose=mod._malloc(16*8);
   assert(p&&pose);
-  const numFrames=32;
-  let nativePoses=0, noPose=0, firstPose=null;
+  const turnReturn=process.env.PAI_TURN_RETURN==='1';
+  const numFrames=turnReturn?64:32;
+  let nativePoses=0, noPose=0, firstPose=null, posesDuringTurn=0, posesAfterReturn=0;
   const poses=[];
   for(let i=0;i<numFrames;i++){
     // Real geometrical camera translation (world frame), not a pose returned.
-    const cameraX=i*cfg.step, cameraY=Math.sin(i*0.15)*0.009;
-    const image=imageAt(cameraX,cameraY);
+    const cameraX=turnReturn&&i>=32 ? (63-i)*cfg.step : i*cfg.step;
+    const cameraY=Math.sin(i*0.15)*0.009;
+    const yaw=turnReturn&&i>=32&&i<56 ? 0.8*Math.sin(Math.PI*(i-32)/24):0;
+    const image=imageAt(cameraX,cameraY,yaw);
     mod.HEAPU8.set(image,p);
     const rc=mod.ccall('pai_stella_track_rgba','number',
       ['number','number','number','number','number'],
@@ -93,14 +99,17 @@ Mapping:
       const poseOut=Array.from(new Float64Array(mod.HEAPU8.buffer,pose,16));
       assert(poseOut.every(Number.isFinite));
       nativePoses++;
+      if(turnReturn&&i>=32&&i<56)posesDuringTurn++;
+      if(turnReturn&&i>=56)posesAfterReturn++;
       if(firstPose===null)firstPose=i;
       poses.push({frame:i,translation:[poseOut[12],poseOut[13],poseOut[14]]});
     }else noPose++;
   }
   mod._free(p);mod._free(pose);mod._pai_stella_destroy();
   console.log('PAI_STELLA_GEOMETRIC_PARALLAX_MULTIFRAME_PASS', JSON.stringify({
-    preset,textureScale,frames:numFrames,nativePoses,noPose,firstPose,poseSample:poses.slice(0,3),
+    preset,textureScale,frames:numFrames,nativePoses,noPose,firstPose,posesDuringTurn,posesAfterReturn,poseSample:poses.slice(0,3),
     caveat:'synthetic two-plane scene; no iPhone or metric accuracy verification'
   }));
+  if(turnReturn)console.log('PAI_STELLA_TURN_RETURN_MULTIFRAME_PASS',JSON.stringify({posesDuringTurn,posesAfterReturn,nativePoses}));
   if(nativePoses===0)console.log('PAI_STELLA_PARALLAX_INIT_NOT_YET_VALIDATED');
 })().catch(e=>{console.error(e);process.exitCode=1;});
