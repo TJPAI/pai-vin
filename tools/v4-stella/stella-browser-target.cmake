@@ -12,5 +12,5 @@ target_link_options(pai_stella_browser PRIVATE
   "-sEXIT_RUNTIME=0"
   "-sALLOW_MEMORY_GROWTH=1"
   "-sEXPORTED_FUNCTIONS=_malloc,_free,_pai_stella_create,_pai_stella_destroy,_pai_stella_last_error,_pai_stella_features_rgba,_pai_stella_track_rgba"
-  "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap"
+  "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString"
 )
