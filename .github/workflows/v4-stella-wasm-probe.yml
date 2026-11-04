@@ -284,6 +284,17 @@ jobs:
           if [ "$built" -eq 0 ]; then
             find /tmp/pai-wasm-prefix -iname '*g2o*config*.cmake' > probe-results/g2o-config-paths.txt
             cat probe-results/g2o-config-paths.txt
+            # Adapt only the temporary pinned upstream clone, never checked-in PWA sources.
+            python3 tools/v4-stella/adapt_eigen_solver_wasm.py /tmp/stella-vslam
+            python3 - <<'PY'
+            from pathlib import Path
+            p=Path('/tmp/stella-vslam/src/stella_vslam/CMakeLists.txt')
+            source=p.read_text()
+            marker='find_package(g2o REQUIRED'
+            assert source.count(marker)==1
+            source=source.replace(marker, 'find_package(Eigen3 CONFIG REQUIRED)\n'+marker, 1)
+            p.write_text(source)
+            PY
             timeout 150s emcmake cmake -S /tmp/stella-vslam -B /tmp/stella-vslam/build-wasm-g2o \
               -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DUSE_ARUCO=OFF -DUSE_CCACHE=OFF \
               -DEIGEN3_INCLUDE_DIR=/usr/include/eigen3 \
