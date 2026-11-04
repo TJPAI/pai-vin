@@ -432,6 +432,17 @@ jobs:
               echo "Stella browser ABI Node failure exit=$node_rc" >> "$GITHUB_STEP_SUMMARY"
             fi
             tail -n 45 probe-results/stella-browser-node.log
+            if [ "$node_rc" -eq 0 ]; then
+              timeout 110s node tools/v4-stella/stella-parallax-node-smoke.cjs /tmp/stella-vslam/build-wasm-g2o/pai_stella_browser.js > probe-results/stella-parallax-node.log 2>&1
+              parallax_rc=$?
+              echo "$parallax_rc" > probe-results/stella-parallax-exit-code.txt
+              tail -n 45 probe-results/stella-parallax-node.log
+              if [ "$parallax_rc" -eq 0 ]; then
+                echo "Real Stella synthetic 3D-parallax frame-sequence processing PASS (pose availability shown in logs)" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "Stella synthetic parallax integration FAILED exit=$parallax_rc" >> "$GITHUB_STEP_SUMMARY"
+              fi
+            fi
           else
             echo "Stella browser ABI link failed exit=$browser_rc" >> "$GITHUB_STEP_SUMMARY"
             grep -n -m 20 -E 'error:|undefined symbol|Error' probe-results/stella-browser-build.log || true
@@ -473,4 +484,6 @@ jobs:
           test -f probe-results/stella-browser-node-exit-code.txt || { echo "Stella browser ABI Node test was never attempted"; exit 1; }
           test "$(cat probe-results/stella-browser-node-exit-code.txt)" = "0" || { echo "Stella browser ABI Node test failed"; exit 1; }
           grep -q "PAI_STELLA_BROWSER_ABI_MULTIFRAME_PASS frames=25" probe-results/stella-browser-node.log || { echo "Multi-frame Stella test missing"; exit 1; }
+          test -f probe-results/stella-parallax-exit-code.txt || { echo "Stella geometric parallax test did not run"; exit 1; }
+          test "$(cat probe-results/stella-parallax-exit-code.txt)" = "0" || { echo "Stella multi-depth parallax sequence failed"; exit 1; }
           echo "Stella browser ABI executed real monocular ORB frame extraction in Node; Safari SLAM untested" >> "$GITHUB_STEP_SUMMARY"
