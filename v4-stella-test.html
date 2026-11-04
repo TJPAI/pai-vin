@@ -27,7 +27,7 @@ canvas{display:block;width:100%;background:#08131f;border-radius:8px}#preview{as
 const $=id=>document.getElementById(id);
 const video=$('video'),preview=$('preview'),ctx=preview.getContext('2d',{willReadFrequently:true}),trail=$('trail'),tc=trail.getContext('2d');
 let stream=null,worker=null,running=false,pending=false,sequence=0,frames=0,valid=0,errors=0,raf=0,lastSent=0;
-let parts=[],current=[],lastValidAt=0,hadLoss=false,lossFrames=0,recoveries=0,lastFrameReceived=0,observedFps=0;
+let parts=[],current=[],lastValidAt=0,hadLoss=false,lossFrames=0,recoveries=0,lastFrameReceived=0,observedFps=0,lastHeading=null;
 const diagnostics={schema:'pai-vin-stella-browser-diagnostic-v1',app:'Stella C++/WASM',startedAt:null,
   source:'genuine native Stella only',frames:[],errors:[],init:false};
 function record(type,data){
@@ -66,7 +66,18 @@ function drawTrail(){
   tc.beginPath();segment.forEach((p,i)=>{const [x,y]=project(p);if(!i)tc.moveTo(x,y);else tc.lineTo(x,y)});
   tc.strokeStyle=idx===parts.length?'#79e2b9':'#687e9a';tc.lineWidth=2.6;tc.stroke();
  }
- if(current.length){const [x,y]=project(current[current.length-1]);tc.fillStyle='#ffd180';tc.beginPath();tc.arc(x,y,4,0,Math.PI*2);tc.fill();}
+ if(current.length){
+  const [x,y]=project(current[current.length-1]);
+  tc.fillStyle='#ffd180';tc.beginPath();tc.arc(x,y,4,0,Math.PI*2);tc.fill();
+  if(lastHeading){
+    const [hx,hz]=lastHeading,norm=Math.hypot(hx,hz);
+    if(norm>0.00001){
+      const ex=x+17*hx/norm,ey=y+17*hz/norm;
+      tc.strokeStyle='#ffd180';tc.lineWidth=2;tc.beginPath();tc.moveTo(x,y);tc.lineTo(ex,ey);tc.stroke();
+      tc.fillStyle='#ffd180';tc.beginPath();tc.arc(ex,ey,3,0,Math.PI*2);tc.fill();
+    }
+  }
+}
  if(!points.length){tc.fillStyle='#bacde2';tc.textAlign='center';tc.fillText('等待 Stella 原生有效位姿',170,166);}
 }
 function stop(){
@@ -81,7 +92,7 @@ $('start').onclick=async()=>{
  if(running)return;
  $('start').disabled=true;quality.disabled=true;status('正在申请摄像头权限…');
  try{
-  frames=0;valid=0;errors=0;lossFrames=0;recoveries=0;lastFrameReceived=0;observedFps=0;hadLoss=false;current=[];parts=[];lastSent=0;pending=false;sequence=0;
+  frames=0;valid=0;errors=0;lossFrames=0;recoveries=0;lastFrameReceived=0;observedFps=0;hadLoss=false;current=[];parts=[];lastHeading=null;lastSent=0;pending=false;sequence=0;
   diagnostics.frames=[];diagnostics.errors=[];
   const rich=quality.value==='rich';
   W=rich?480:320; H=rich?360:240;
@@ -111,6 +122,7 @@ $('start').onclick=async()=>{
       if(hadLoss && current.length){parts.push(current);current=[];if(parts.length>3)parts.shift();}
       if(hadLoss&&valid>0) recoveries++;
       hadLoss=false;lossFrames=0;current.push(p);valid++;lastValidAt=performance.now();
+      lastHeading=[d.pose[8],d.pose[10]].every(Number.isFinite)?[d.pose[8],d.pose[10]]:null;
       $('tracking').textContent='原生位姿已输出：有效 '+valid+' 帧（任意尺度，未验证精度）';
       drawTrail();
      }
