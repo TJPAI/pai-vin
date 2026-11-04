@@ -246,6 +246,25 @@ void mapping_module::run() {"""),
     // update the frame statistics
     SPDLOG_TRACE("tracking_module: update_frame_statistics (curr_frm_={})", curr_frm_.id_);"""
     ))
+    # The normal turn fallback uses an Essential-matrix solver, which can be
+    # degenerate during in-place yaw. Before entering Lost, try real 2D-3D
+    # descriptor/PnP-RANSAC against the current reference keyframe. This is
+    # independent of camera translation and keeps the original map origin.
+    files["src/stella_vslam/tracking_module.cc"].append((
+        """        succeeded = track_current_frame();
+    }
+    else if (bow_db_ && enable_auto_relocalization_) {""",
+        """        succeeded = track_current_frame();
+#ifdef __EMSCRIPTEN__
+        if (!succeeded && curr_frm_.ref_keyfrm_ && !curr_frm_.ref_keyfrm_->will_be_erased()) {
+            std::vector<std::shared_ptr<data::keyframe>> reference_only{curr_frm_.ref_keyfrm_};
+            succeeded = relocalizer_.reloc_by_candidates(curr_frm_, reference_only, true);
+            spdlog::info("PAI_STELLA_TURN_PNP frame={} success={}", curr_frm_.id_, succeeded ? 1 : 0);
+        }
+#endif
+    }
+    else if (bow_db_ && enable_auto_relocalization_) {"""
+    ))
     # Upstream relocalizer marks a successful PnP pose but has a TODO to
     # update the reference keyframe. This matters after a turn: local-map
     # tracking must use the actual recovered candidate, not a stale reference.
