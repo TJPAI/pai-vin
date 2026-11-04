@@ -430,13 +430,13 @@ unsigned int robust::brute_force_match"""
         // Compare optical axes in the same world coordinates. A 12-degree
         // yaw/pitch change captures a new viewing direction at zero translation.
         const double optical_axis_cos =
-            curr_frm.get_rot_wc().col(2).dot(last_inserted_keyfrm->get_rot_wc().col(2));
+            curr_frm.get_rot_wc().col(2).dot(last_inserted_keyfrm->get_rot_cw().row(2).transpose());
         rotation_keyframe_needed = optical_axis_cos < 0.9781476007338057;
     }
     if (rotation_keyframe_needed && !mapper_is_skipping_localBA) {
         spdlog::info("PAI_STELLA_ROTATION_KEYFRAME frame={} tracked={} cos_angle={}",
                      curr_frm.id_, num_tracked_lms,
-                     curr_frm.get_rot_wc().col(2).dot(last_inserted_keyfrm->get_rot_wc().col(2)));
+                     curr_frm.get_rot_wc().col(2).dot(last_inserted_keyfrm->get_rot_cw().row(2).transpose()));
         return true;
     }
 #endif
