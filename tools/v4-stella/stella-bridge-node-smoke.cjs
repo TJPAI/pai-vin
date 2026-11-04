@@ -37,11 +37,12 @@ Feature:
   ini_fast_threshold: 20
   min_fast_threshold: 7
 `;
+  assert.equal(typeof mod._pai_stella_get_diagnostics,'function','Missing native Stella V1.3 diagnostics ABI');
   const createRc = mod.ccall('pai_stella_create','number',['string'],[yaml]);
   assert.equal(createRc, 0, 'native Stella construction failed');
   const width = 320, height = 240, bytes = width * height * 4;
-  const p = mod._malloc(bytes), pose = mod._malloc(16 * 8);
-  assert(p > 0 && pose > 0);
+  const p = mod._malloc(bytes), pose = mod._malloc(16 * 8), stats = mod._malloc(20);
+  assert(p > 0 && pose > 0 && stats > 0);
   let seed = 0x9e3779b9;
   const pixels = new Uint8Array(bytes);
   for (let y = 0; y < height; y++)
@@ -100,6 +101,12 @@ Feature:
   }
   console.log(`PAI_STELLA_BROWSER_ABI_MULTIFRAME_PASS frames=${total+1} poses=${poses} no_pose=${noPoses} fixture=2D_translation_not_3D_parallax`);
   // Pose count is diagnostic only: not an acceptance criterion for this 2D fixture.
+  assert.equal(mod._pai_stella_get_diagnostics(stats), 0, 'Stella tracking telemetry read failed');
+  const telemetry=Array.from(new Int32Array(mod.HEAPU8.buffer,stats,5));
+  assert([0,1,2].includes(telemetry[0]), 'Unknown tracker state');
+  assert(telemetry.slice(1).every(v=>Number.isInteger(v)&&v>=0),'Invalid map/ORB telemetry');
+  console.log('PAI_STELLA_NATIVE_TRACK_DIAGNOSTICS_PASS',JSON.stringify(telemetry));
+  mod._free(stats);
   mod._free(p); mod._free(pose); mod._pai_stella_destroy();
   console.log('PAI_STELLA_BROWSER_ABI_NODE_PASS');
 })().catch(e => { console.error(e); process.exitCode = 1; });
