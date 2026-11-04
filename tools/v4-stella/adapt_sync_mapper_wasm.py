@@ -197,9 +197,12 @@ void mapping_module::run() {"""),
             const size_t count = std::min<size_t>(12, older);
             std::vector<std::shared_ptr<data::keyframe>> historical;
             historical.reserve(count);
+            // Sweep every historical keyframe over successive Lost frames.
+            // A fixed uniformly spaced subset could miss the exact return view
+            // forever. No BoW dictionary exists in this browser build.
+            const size_t start = (static_cast<size_t>(curr_frm_.id_) * count) % older;
             for (size_t k = 0; k < count; ++k) {
-                const size_t offset = count == 1 ? 0 : k * (older - 1) / (count - 1);
-                historical.push_back(candidates.at(recent_count + offset));
+                historical.push_back(candidates.at(recent_count + (start + k) % older));
             }
             succeeded = relocalizer_.reloc_by_candidates(curr_frm_, historical, true);
             spdlog::info("PAI_STELLA_WASM_RELOC_HISTORY frame={} total={} tested={} recovered={}",
