@@ -179,11 +179,32 @@ void mapping_module::run() {"""),
                      const std::shared_ptr<data::keyframe>& b) {
                       return a->id_ > b->id_;
                   });
-        if (candidates.size() > 12) candidates.resize(12);
-        // Use Stella's REAL robust feature matches and PnP pose solution.
-        succeeded = relocalizer_.reloc_by_candidates(curr_frm_, candidates, true);
-        spdlog::info("PAI_STELLA_WASM_RELOC frame={} candidates={} recovered={}",
-                     curr_frm_.id_, candidates.size(), succeeded ? 1 : 0);
+        // Fast path: latest 12 keyframes. Use native descriptor matching,
+        // PnP-RANSAC and local-map refinement, not an extrapolated pose.
+        const size_t recent_count = std::min<size_t>(12, candidates.size());
+        std::vector<std::shared_ptr<data::keyframe>> recent(
+            candidates.begin(), candidates.begin() + recent_count);
+        if (!recent.empty()) {
+            succeeded = relocalizer_.reloc_by_candidates(curr_frm_, recent, true);
+        }
+        spdlog::info("PAI_STELLA_WASM_RELOC_RECENT frame={} candidates={} recovered={}",
+                     curr_frm_.id_, recent.size(), succeeded ? 1 : 0);
+        // Turn-around recovery: the place last seen may be older than the
+        // newest 12 keyframes. Search up to 12 evenly spaced historical
+        // keyframes only after the fast path fails.
+        if (!succeeded && candidates.size() > recent_count) {
+            const size_t older = candidates.size() - recent_count;
+            const size_t count = std::min<size_t>(12, older);
+            std::vector<std::shared_ptr<data::keyframe>> historical;
+            historical.reserve(count);
+            for (size_t k = 0; k < count; ++k) {
+                const size_t offset = count == 1 ? 0 : k * (older - 1) / (count - 1);
+                historical.push_back(candidates.at(recent_count + offset));
+            }
+            succeeded = relocalizer_.reloc_by_candidates(curr_frm_, historical, true);
+            spdlog::info("PAI_STELLA_WASM_RELOC_HISTORY frame={} total={} tested={} recovered={}",
+                         curr_frm_.id_, candidates.size(), historical.size(), succeeded ? 1 : 0);
+        }
         }
         if (succeeded) {
             last_reloc_frm_id_ = curr_frm_.id_;
