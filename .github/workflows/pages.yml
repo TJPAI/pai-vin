@@ -109,9 +109,14 @@ jobs:
             run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/v4-stella-wasm-probe.yml/runs?branch=main&status=success&per_page=1" --jq '.workflow_runs[0].id // empty')
           fi
           if [ -z "$run_id" ]; then
-            echo 'No successful Stella browser build yet: test page will show module unavailable'
+            echo 'No successful Stella browser binary available'
+            echo 'STELLA_VALIDATED_RUN=' >> "$GITHUB_ENV"
+            echo 'STELLA_VALIDATED_SHA=' >> "$GITHUB_ENV"
             exit 0
           fi
+          source_sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.head_sha')
+          echo "STELLA_VALIDATED_RUN=$run_id" >> "$GITHUB_ENV"
+          echo "STELLA_VALIDATED_SHA=$source_sha" >> "$GITHUB_ENV"
           mkdir -p dist/vendor/stella
           if gh run download "$run_id" -R "$GITHUB_REPOSITORY" -n stella-browser-abi-js-wasm -D dist/vendor/stella; then
             test -s dist/vendor/stella/pai_stella_browser.js
@@ -119,8 +124,33 @@ jobs:
             echo "Published genuine Stella JS/WASM artifact from validated CI run $run_id" >> "$GITHUB_STEP_SUMMARY"
           else
             rm -rf dist/vendor/stella
+            echo 'STELLA_VALIDATED_RUN=' >> "$GITHUB_ENV"
+            echo 'STELLA_VALIDATED_SHA=' >> "$GITHUB_ENV"
             echo "Stella binary absent in run $run_id; not publishing placeholder" >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Write deployed frontend and Stella WASM version metadata
+        env:
+          APP_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime
+          import json
+          import os
+          from pathlib import Path
+          path=Path("dist/vendor/stella/pai_stella_browser.wasm")
+          wasm_available=path.is_file() and path.stat().st_size>0
+          data={
+            "schema":"pai-vin-stella-build-v1",
+            "appCommit":os.environ["APP_COMMIT"],
+            "builtAt":datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+            "stellaWasmRunId":os.environ.get("STELLA_VALIDATED_RUN","") if wasm_available else "",
+            "stellaSourceCommit":os.environ.get("STELLA_VALIDATED_SHA","") if wasm_available else "",
+            "wasmArtifactPresent":wasm_available
+          }
+          Path("dist/stella-build-info.json").write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\\n")
+          print(data)
+          PY
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload clean PWA
