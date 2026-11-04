@@ -324,8 +324,8 @@ jobs:
             python3 -c 'from pathlib import Path; p=Path("/tmp/stella-vslam/src/stella_vslam/CMakeLists.txt"); s=p.read_text(); marker="find_package(g2o REQUIRED"; assert s.count(marker)==1; p.write_text(s.replace(marker,"find_package(Eigen3 CONFIG REQUIRED)\n"+marker,1))'
             # Add a genuine executable linking real stella_vslam and its transitive libraries.
             # Constructor-only smoke: no background threads, no fabricated camera poses.
-            printf '%s\\n' \
-              "add_executable(pai_stella_link_smoke \\\"$GITHUB_WORKSPACE/tools/v4-stella/stella-wasm-link-smoke.cc\\\")" \
+            printf '%s\n' \
+              "add_executable(pai_stella_link_smoke \"$GITHUB_WORKSPACE/tools/v4-stella/stella-wasm-link-smoke.cc\")" \
               'target_link_libraries(pai_stella_link_smoke PRIVATE stella_vslam)' \
               'set_target_properties(pai_stella_link_smoke PROPERTIES SUFFIX ".js")' \
               'target_link_options(pai_stella_link_smoke PRIVATE "-sALLOW_MEMORY_GROWTH=1" "-sENVIRONMENT=node" "-sEXIT_RUNTIME=1")' \
