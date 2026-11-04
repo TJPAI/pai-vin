@@ -20,11 +20,9 @@ EXPECTED = {
          "g2o::LinearSolverEigen<g2o::BlockSolver_7_3::PoseMatrixType>"),
     ],
     "src/stella_vslam/CMakeLists.txt": [
-        ("             g2o::solver_csparse\n", ""),
-        ("             g2o::csparse_extension\n", ""),
-        ("             OPTIONAL_COMPONENTS\n             g2o::csparse", ""),
-        ("                      g2o::solver_csparse\n", ""),
-        ("                      g2o::csparse_extension\n", ""),
+        ("             g2o::solver_csparse\\n             g2o::csparse_extension\\n             OPTIONAL_COMPONENTS\\n             g2o::csparse", ""),
+        ("                      g2o::solver_csparse\\n", ""),
+        ("                      g2o::csparse_extension\\n", ""),
     ],
 }
 
