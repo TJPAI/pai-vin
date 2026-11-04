@@ -1,0 +1,37 @@
+name: PAI-VIN Stella CI shell syntax preflight
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/v4-stella-ci-shell-preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate-shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate real Stella g2o configure and core-build Bash scripts
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess, textwrap
+          path = Path('.github/workflows/v4-stella-wasm-probe.yml')
+          content = path.read_text()
+          sections = re.findall(r'(?ms)^      - name: ([^\n]+)\n(?:        [^\n]*\n)*?        run: \|\n(.*?)(?=^      - name:|\Z)', content)
+          if not sections:
+              raise SystemExit('No workflow shell sections extracted; parser cannot establish acceptance')
+          targets = [ (name, body) for name, body in sections if ('Seventh probe' in name or 'Enforce Stella core acceptance gate' in name)]
+          if len(targets) != 2:
+              raise SystemExit(f'Expected 2 specific shell sections, found {len(targets)}')
+          for name, body in targets:
+              script = textwrap.dedent(body)
+              p = subprocess.run(['bash', '-n'], input=script, text=True, capture_output=True)
+              if p.returncode:
+                  raise SystemExit(f'{name}: bash syntax FAILED: {p.stderr}')
+              print(f'BASH_SYNTAX_PASS {name}')
+          PY
+          echo 'Stella CI shell syntax PASS; CMake, C++ and Safari execution untested.' >> "$GITHUB_STEP_SUMMARY"
