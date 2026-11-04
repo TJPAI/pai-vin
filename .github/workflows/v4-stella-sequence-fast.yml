@@ -1,0 +1,54 @@
+name: PAI-VIN Stella fast 25-frame + geometric-parallax WASM validation
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/v4-stella-sequence-fast.yml'
+      - 'tools/v4-stella/stella-bridge-node-smoke.cjs'
+      - 'tools/v4-stella/stella-parallax-node-smoke.cjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  real-stella-sequence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify pinned successful real Stella WASM artifact origin
+        run: |
+          set -euo pipefail
+          echo "SOURCE_RUN=41780423778" >> "$GITHUB_STEP_SUMMARY"
+          conclusion=$(gh run view 41780423778 -R "$GITHUB_REPOSITORY" --json conclusion --jq '.conclusion')
+          test "$conclusion" = success
+          mkdir -p /tmp/stella-validated
+          gh run download 41780423778 -R "$GITHUB_REPOSITORY" -n stella-browser-abi-js-wasm -D /tmp/stella-validated
+          test -s /tmp/stella-validated/pai_stella_browser.js
+          test -s /tmp/stella-validated/pai_stella_browser.wasm
+          sha256sum /tmp/stella-validated/pai_stella_browser.js /tmp/stella-validated/pai_stella_browser.wasm | tee stella-validated-sha256.txt
+      - name: Run actual Stella 25 frame no-deadlock proof
+        run: |
+          set -euo pipefail
+          timeout 100s node tools/v4-stella/stella-bridge-node-smoke.cjs /tmp/stella-validated/pai_stella_browser.js | tee stella-25frame-test.log
+          grep -q 'PAI_STELLA_BROWSER_ABI_MULTIFRAME_PASS frames=25' stella-25frame-test.log
+          echo 'Real Stella WASM 25-frame sequence ran without deadlock (not a pose-accuracy test)' >> "$GITHUB_STEP_SUMMARY"
+      - name: Run actual Stella 32 frame true geometric parallax fixture
+        run: |
+          set -euo pipefail
+          timeout 150s node tools/v4-stella/stella-parallax-node-smoke.cjs /tmp/stella-validated/pai_stella_browser.js | tee stella-parallax-test.log
+          grep -q 'PAI_STELLA_GEOMETRIC_PARALLAX_MULTIFRAME_PASS' stella-parallax-test.log
+          echo 'Real Stella WASM geometric parallax sequence completed; native pose count recorded in log' >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve exact sequence test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stella-fast-sequence-evidence
+          path: |
+            stella-validated-sha256.txt
+            stella-25frame-test.log
+            stella-parallax-test.log
+          if-no-files-found: warn
+          retention-days: 14
