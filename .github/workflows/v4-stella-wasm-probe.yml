@@ -482,7 +482,7 @@ jobs:
             fi
             tail -n 45 probe-results/stella-browser-node.log
             if [ "$node_rc" -eq 0 ]; then
-              timeout 110s node tools/v4-stella/stella-parallax-node-smoke.cjs /tmp/stella-vslam/build-wasm-g2o/pai_stella_browser.js > probe-results/stella-parallax-node.log 2>&1
+              PAI_PARALLAX_PRESET=near timeout 110s node tools/v4-stella/stella-parallax-node-smoke.cjs /tmp/stella-vslam/build-wasm-g2o/pai_stella_browser.js > probe-results/stella-parallax-node.log 2>&1
               parallax_rc=$?
               echo "$parallax_rc" > probe-results/stella-parallax-exit-code.txt
               tail -n 45 probe-results/stella-parallax-node.log
@@ -494,7 +494,7 @@ jobs:
               # Independent turn-and-return regression: unlike ABI smoke,
               # this must actually recover a native pose in the original map.
               if [ "$parallax_rc" -eq 0 ]; then
-                PAI_TURN_RETURN=1 timeout 170s node tools/v4-stella/stella-parallax-node-smoke.cjs /tmp/stella-vslam/build-wasm-g2o/pai_stella_browser.js > probe-results/stella-turn-return-node.log 2>&1
+                PAI_PARALLAX_PRESET=near PAI_TURN_RETURN=1 timeout 170s node tools/v4-stella/stella-parallax-node-smoke.cjs /tmp/stella-vslam/build-wasm-g2o/pai_stella_browser.js > probe-results/stella-turn-return-node.log 2>&1
                 turn_rc=$?
                 echo "$turn_rc" > probe-results/stella-turn-return-exit-code.txt
                 tail -n 35 probe-results/stella-turn-return-node.log
