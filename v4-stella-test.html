@@ -27,7 +27,7 @@ canvas{display:block;width:100%;background:#08131f;border-radius:8px}#preview{as
 const $=id=>document.getElementById(id);
 const video=$('video'),preview=$('preview'),ctx=preview.getContext('2d',{willReadFrequently:true}),trail=$('trail'),tc=trail.getContext('2d');
 let stream=null,worker=null,running=false,pending=false,sequence=0,frames=0,valid=0,errors=0,raf=0,lastSent=0;
-let parts=[],current=[],lastValidAt=0,hadLoss=false;
+let parts=[],current=[],lastValidAt=0,hadLoss=false,lossFrames=0,recoveries=0,lastFrameReceived=0,observedFps=0;
 const diagnostics={schema:'pai-vin-stella-browser-diagnostic-v1',app:'Stella C++/WASM',startedAt:null,
   source:'genuine native Stella only',frames:[],errors:[],init:false};
 function record(type,data){
@@ -40,7 +40,7 @@ function record(type,data){
 $('export').onclick=()=>{
  const out={...diagnostics,exportedAt:new Date().toISOString(),
    userAgent:navigator.userAgent,processedFrames:frames,nativeValidPoses:valid,
-   erroredFrames:errors,trackingMode:$('mode').value,quality:quality.value,width:W,height:H};
+   erroredFrames:errors,recoveries,observedFps,trackingMode:$('mode').value,quality:quality.value,width:W,height:H};
  const json=JSON.stringify(out,null,2);
  const blob=new Blob([json],{type:'application/json'});
  const url=URL.createObjectURL(blob);
@@ -81,6 +81,8 @@ $('start').onclick=async()=>{
  if(running)return;
  $('start').disabled=true;quality.disabled=true;status('正在申请摄像头权限…');
  try{
+  frames=0;valid=0;errors=0;lossFrames=0;recoveries=0;lastFrameReceived=0;observedFps=0;hadLoss=false;current=[];parts=[];lastSent=0;pending=false;sequence=0;
+  diagnostics.frames=[];diagnostics.errors=[];
   const rich=quality.value==='rich';
   W=rich?480:320; H=rich?360:240;
   preview.width=W;preview.height=H;
@@ -95,23 +97,30 @@ $('start').onclick=async()=>{
    if(d.type==='error'){pending=false;errors++;record('error',{message:d.message});status('Stella 错误：'+d.message);if(errors>3)stop();}
    if(d.type==='frame'){
     pending=false;frames++;
+    const now=performance.now();
+    if(lastFrameReceived>0){
+      const instantFps=1000/Math.max(1,now-lastFrameReceived);
+      observedFps=observedFps?0.85*observedFps+0.15*instantFps:instantFps;
+    }
+    lastFrameReceived=now;
     record('frame',{sequence:d.sequence,mode:d.mode,nativePose:!!d.pose,featureCount:d.features??null,pose:d.pose||null,processingMs:d.processingMs??null});
     lastProcessMs=d.processingMs||0;
     if(d.pose){
      const p=[d.pose[12],d.pose[14]];
      if(Number.isFinite(p[0])&&Number.isFinite(p[1])){
       if(hadLoss && current.length){parts.push(current);current=[];if(parts.length>3)parts.shift();}
-      hadLoss=false;current.push(p);valid++;lastValidAt=performance.now();
+      if(hadLoss&&valid>0) recoveries++;
+      hadLoss=false;lossFrames=0;current.push(p);valid++;lastValidAt=performance.now();
       $('tracking').textContent='原生位姿已输出：有效 '+valid+' 帧（任意尺度，未验证精度）';
       drawTrail();
      }
     }else if(d.mode==='track'){
-      hadLoss=true;
-      $('tracking').textContent='Stella 尚无有效位姿（初始化中或失跟）；不会画假轨迹';
+      hadLoss=true;lossFrames++;
+      $('tracking').textContent=(valid?'Stella 已失跟 '+lossFrames+' 帧；正在尝试原生关键帧重定位':'Stella 尚在初始化，暂无有效位姿')+'；不绘制预测轨迹';
     }else{
       $('tracking').textContent='真实 Stella ORB 提取 '+d.features+' 个特征；此模式不会输出位姿';
     }
-    $('counts').textContent='处理帧 '+frames+' · 有效位姿 '+valid+' · 最新处理 '+Math.round(lastProcessMs)+' ms · 错误 '+errors;
+    $('counts').textContent='处理帧 '+frames+' · 有效位姿 '+valid+' · 恢复 '+recoveries+' 次 · 有效帧率 '+observedFps.toFixed(1)+' fps · 单帧 '+Math.round(lastProcessMs)+' ms · 错误 '+errors;
    }
   };
   const focal=quality.value==='rich'?410:275;
@@ -129,7 +138,7 @@ $('start').onclick=async()=>{
 function tick(t){
  if(!running)return;
  raf=requestAnimationFrame(tick);
- if(pending||document.hidden||video.readyState<2||t-lastSent<150)return;
+ if(pending||document.hidden||video.readyState<2||t-lastSent<(quality.value==='rich'?65:50))return;
  lastSent=t;
  const vw=video.videoWidth,vh=video.videoHeight;if(!vw||!vh)return;
  const scale=Math.max(W/vw,H/vh),cw=W/scale,ch=H/scale;
