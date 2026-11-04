@@ -387,9 +387,9 @@ jobs:
               if [ "$link_rc" -eq 0 ]; then
                 timeout 30s node /tmp/stella-vslam/build-wasm-g2o/pai_stella_link_smoke.js > probe-results/stella-wasm-node-execute.log 2>&1
                 execute_rc=$?
-                if [ "$execute_rc" -eq 0 ] && grep -q 'PAI_STELLA_REAL_SYSTEM_CONSTRUCTOR_LINK_PASS' probe-results/stella-wasm-node-execute.log; then
+                if [ "$execute_rc" -eq 0 ] && grep -q 'PAI_STELLA_REAL_SYSTEM_CONSTRUCTOR_LINK_PASS' probe-results/stella-wasm-node-execute.log && grep -Eq 'PAI_STELLA_REAL_ORB_FRAME features=[1-9][0-9]* descriptor_rows=[1-9][0-9]*' probe-results/stella-wasm-node-execute.log; then
                   echo "0" > probe-results/stella-node-exit-code.txt
-                  echo 'Real Stella system ctor WASM linked and executed in Node (Safari NOT tested)' >> "$GITHUB_STEP_SUMMARY"
+                  echo 'Real Stella system and actual monocular ORB extraction executed in Node WASM (Safari NOT tested)' >> "$GITHUB_STEP_SUMMARY"
                 else
                   echo "${execute_rc:-96}" > probe-results/stella-node-exit-code.txt
                   tail -n 60 probe-results/stella-wasm-node-execute.log
@@ -427,4 +427,4 @@ jobs:
           test -f probe-results/stella-link-exit-code.txt || { echo "JS/WASM link was not attempted"; exit 1; }
           test "$(cat probe-results/stella-link-exit-code.txt)" = "0" || { echo "JS/WASM link failed"; exit 1; }
           test "$(cat probe-results/stella-node-exit-code.txt)" = "0" || { echo "Node.js WASM execution did not pass"; exit 1; }
-          echo "Stella actual system constructor Node.js WASM execution PASS; Safari/SLAM frame tracking NOT verified" >> "$GITHUB_STEP_SUMMARY"
+          echo "Stella ctor + actual monocular frame ORB processing PASS in Node; Safari / camera pose tracking NOT verified" >> "$GITHUB_STEP_SUMMARY"
