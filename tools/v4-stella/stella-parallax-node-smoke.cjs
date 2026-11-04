@@ -110,6 +110,16 @@ Mapping:
     preset,textureScale,frames:numFrames,nativePoses,noPose,firstPose,posesDuringTurn,posesAfterReturn,poseSample:poses.slice(0,3),
     caveat:'synthetic two-plane scene; no iPhone or metric accuracy verification'
   }));
-  if(turnReturn)console.log('PAI_STELLA_TURN_RETURN_MULTIFRAME_PASS',JSON.stringify({posesDuringTurn,posesAfterReturn,nativePoses}));
+  if(turnReturn){
+    // A valid WASM binary is NOT equivalent to a tracker that can survive
+    // a real rendered turn. Fail this regression unless real native positions
+    // occur both before the turn and after returning to the mapped scene.
+    const posesBeforeTurn = poses.filter(p=>p.frame<32).length;
+    console.log('PAI_STELLA_TURN_RETURN_REPORT',JSON.stringify({
+      posesBeforeTurn,posesDuringTurn,posesAfterReturn,nativePoses}));
+    assert(posesBeforeTurn>0, 'Turn regression inconclusive: no real initialized map before turn');
+    assert(posesAfterReturn>0, 'Turn regression FAIL: no real pose recovered after returning to original mapped view');
+    console.log('PAI_STELLA_TURN_RETURN_RECOVERY_VERIFIED');
+  }
   if(nativePoses===0)console.log('PAI_STELLA_PARALLAX_INIT_NOT_YET_VALIDATED');
 })().catch(e=>{console.error(e);process.exitCode=1;});
