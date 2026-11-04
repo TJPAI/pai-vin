@@ -130,6 +130,23 @@ void mapping_module::run() {"""),
     return initialized;"""
         )
     ]
+    # Diagnose WHY a geometrically valid-looking match set is rejected.
+    # Diagnostic-only logs, never alter thresholds or fabricate geometry.
+    files["src/stella_vslam/initialize/base.cc"] = [
+        ("#include \"stella_vslam/solve/triangulator.h\"",
+         "#include \"stella_vslam/solve/triangulator.h\"\n#include <spdlog/spdlog.h>"),
+        ("    if (*max_num_valid_pts_iter < min_num_valid_pts_) {",
+         """#ifdef __EMSCRIPTEN__
+    spdlog::info("PAI_STELLA_POSE_HYPOTHESES max_valid={} min_valid={} similar={} parallax_cos={} parallax_thr={} triangulated={} min_triangulated={}",
+                 *max_num_valid_pts_iter, min_num_valid_pts_,
+                 std::count_if(nums_valid_pts.begin(), nums_valid_pts.end(),
+                     [max_num_valid_pts_iter](unsigned int v){ return 0.8 * (*max_num_valid_pts_iter) < v; }),
+                 init_parallax.at(max_num_valid_index),
+                 std::cos(parallax_deg_thr_ / 180.0 * M_PI),
+                 num_triangulated_pts.at(max_num_valid_index), min_num_triangulated_);
+#endif
+    if (*max_num_valid_pts_iter < min_num_valid_pts_) {""")
+    ]
     changed = {}
     for name, replacements in files.items():
         path = root / name
