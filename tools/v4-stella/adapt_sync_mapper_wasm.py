@@ -446,6 +446,36 @@ unsigned int robust::brute_force_match"""
            && !almost_all_lms_are_tracked
            && !mapper_is_skipping_localBA;"""
     )]
+    # A second premature-rejection bug in NORMAL (not just relocalization)
+    # tracking: search_local_landmarks() returns false when it cannot ADD
+    # further projected landmarks, even when the frame already has enough
+    # confirmed 2D-3D matches for pose optimization. This produces sharp
+    # turn-onset tracking dropouts at the boundary of local map visibility.
+    # Keep the 20-point gate and all downstream PnP/pose inlier checks.
+    files["src/stella_vslam/tracking_module.cc"].append((
+        """    if (!found_proj_candidate) {
+        spdlog::warn("projection candidate not found");
+        return false;
+    }
+
+    // acquire more 2D-3D matches by projecting the local landmarks to the current frame""",
+        """    if (!found_proj_candidate) {
+#ifdef __EMSCRIPTEN__
+        if (curr_landmark_ids.size() < 20) {
+            spdlog::info("PAI_STELLA_LOCAL_PROJ_MISS insufficient_existing={}",
+                         curr_landmark_ids.size());
+            return false;
+        }
+        spdlog::info("PAI_STELLA_LOCAL_PROJ_FALLBACK existing={}",
+                     curr_landmark_ids.size());
+#else
+        spdlog::warn("projection candidate not found");
+        return false;
+#endif
+    }
+
+    // acquire more 2D-3D matches by projecting the local landmarks to the current frame"""
+    ))
     # Read-only per-frame internal state exported to iPhone diagnostics.
     # Values: tracker state (0 init/1 tracking/2 lost), keyframe count,
     # landmark count, observed ORB count, associated 3D landmark count.
