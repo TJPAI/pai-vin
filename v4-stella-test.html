@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PAI-VIN · Stella 原生 WASM 试验</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101929;color:#f1f7ff;font:15px -apple-system,BlinkMacSystemFont,sans-serif}main{max-width:620px;margin:auto;padding:14px}
+section{background:#192a42;border:1px solid #38516c;border-radius:13px;margin:12px 0;padding:12px}h1{font-size:22px}h2{font-size:17px}
+p{line-height:1.5}button,select,input{font:inherit}button{padding:11px 14px;background:#408de8;border:0;border-radius:9px;color:white;margin:4px}button:disabled{opacity:.4}
+select,input{padding:8px;background:#0c1728;border:1px solid #53708a;color:white;border-radius:8px}
+canvas{display:block;width:100%;background:#08131f;border-radius:8px}#preview{aspect-ratio:4/3}#trail{aspect-ratio:1}
+.small{font-size:13px;color:#aec4dc}.warn{color:#ffd18c}.good{color:#8ee3b9}code{overflow-wrap:anywhere}
+</style></head><body><main>
+<h1>PAI-VIN Stella · 原生 WASM 试验</h1>
+<p class="warn">这是 Stella 原生引擎测试，不是已经完成的室内定位系统。只有引擎返回真实位姿才会绘制轨迹。当前单线程 WASM 尚未验证连续建图，0.5 米精度及持久重定位均未实现。</p>
+<section>
+<button id="start">启动 Stella 与摄像头</button><button id="stop" disabled>停止</button>
+<label>处理模式 <select id="mode"><option value="track">真实位姿跟踪（试验）</option><option value="features">仅检查真实 ORB 特征</option></select></label>
+<p class="small">相机内参为暂定值，尚未经 iPhone 标定；定位结果不得当作米制坐标使用。</p>
+<p id="status" role="status">未启动</p><p id="counts" class="small">处理帧 0 · 有效位姿 0</p>
+</section>
+<section><h2>实时相机画面（320×240）</h2><video id="video" autoplay muted playsinline style="display:none"></video><canvas id="preview" width="320" height="240"></canvas></section>
+<section><h2>Stella 实时俯视轨迹（非米制）</h2><canvas id="trail" width="340" height="340"></canvas><p id="tracking" class="small">没有原生位姿；不会绘制虚构轨迹</p></section>
+<section><h2>技术状态</h2><p class="small">前端通过独立 Worker 调用 Stella C++ WASM 的 RGBA→ORB/位姿接口。没有使用 AlvaAR、IMU 推算或人工生成的轨迹。未能输出位姿时即显示“暂无位姿”。即使本页面能够加载，也不代表连续建图线程或重定位已经可用。</p></section>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const video=$('video'),preview=$('preview'),ctx=preview.getContext('2d',{willReadFrequently:true}),trail=$('trail'),tc=trail.getContext('2d');
+let stream=null,worker=null,running=false,pending=false,sequence=0,frames=0,valid=0,errors=0,raf=0,lastSent=0;
+let parts=[],current=[],lastValidAt=0,hadLoss=false;
+const W=320,H=240;
+function status(s){$('status').textContent=s;}
+function drawTrail(){
+ tc.fillStyle='#08131f';tc.fillRect(0,0,trail.width,trail.height);
+ const points=parts.flat().concat(current);
+ const maxExtent=Math.max(1,...points.map(p=>Math.max(Math.abs(p[0]-points[0][0]),Math.abs(p[1]-points[0][1]))));
+ const scale=Math.min(100,135/maxExtent);
+ const origin=points[0]||[0,0],project=p=>[170+(p[0]-origin[0])*scale,170+(p[1]-origin[1])*scale];
+ for(const [idx,segment] of parts.concat([current]).entries()){
+  if(!segment.length)continue;
+  tc.beginPath();segment.forEach((p,i)=>{const [x,y]=project(p);if(!i)tc.moveTo(x,y);else tc.lineTo(x,y)});
+  tc.strokeStyle=idx===parts.length?'#79e2b9':'#687e9a';tc.lineWidth=2.6;tc.stroke();
+ }
+ if(current.length){const [x,y]=project(current[current.length-1]);tc.fillStyle='#ffd180';tc.beginPath();tc.arc(x,y,4,0,Math.PI*2);tc.fill();}
+ if(!points.length){tc.fillStyle='#bacde2';tc.textAlign='center';tc.fillText('等待 Stella 原生有效位姿',170,166);}
+}
+function stop(){
+ running=false;cancelAnimationFrame(raf);raf=0;
+ stream?.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;
+ worker?.terminate();worker=null;pending=false;
+ $('start').disabled=false;$('stop').disabled=true;
+ status('已停止');drawTrail();
+}
+$('stop').onclick=stop;
+$('start').onclick=async()=>{
+ if(running)return;
+ $('start').disabled=true;status('正在申请摄像头权限…');
+ try{
+  stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480}}});
+  video.srcObject=stream;await video.play();
+  worker=new Worker('./v4-stella-worker.js');
+  worker.onerror=e=>{errors++;status('Stella Worker 失败：'+(e.message||'未知错误'));stop();};
+  worker.onmessage=e=>{
+   const d=e.data;
+   if(d.type==='ready'){running=true;$('stop').disabled=false;status(d.message);raf=requestAnimationFrame(tick);}
+   if(d.type==='error'){pending=false;errors++;status('Stella 错误：'+d.message);if(errors>3)stop();}
+   if(d.type==='frame'){
+    pending=false;frames++;
+    if(d.pose){
+     const p=[d.pose[12],d.pose[14]];
+     if(Number.isFinite(p[0])&&Number.isFinite(p[1])){
+      if(hadLoss && current.length){parts.push(current);current=[];if(parts.length>3)parts.shift();}
+      hadLoss=false;current.push(p);valid++;lastValidAt=performance.now();
+      $('tracking').textContent='原生位姿已输出：有效 '+valid+' 帧（任意尺度，未验证精度）';
+      drawTrail();
+     }
+    }else if(d.mode==='track'){
+      hadLoss=true;
+      $('tracking').textContent='Stella 尚无有效位姿（初始化中或失跟）；不会画假轨迹';
+    }else{
+      $('tracking').textContent='真实 Stella ORB 提取 '+d.features+' 个特征；此模式不会输出位姿';
+    }
+    $('counts').textContent='处理帧 '+frames+' · 有效位姿 '+valid+' · 错误 '+errors;
+   }
+  };
+  const yaml=['Camera:','  name: PAI VIN iPhone WASM probe','  setup: monocular','  model: perspective',
+    '  fx: 300.0','  fy: 300.0','  cx: 160.0','  cy: 120.0','  k1: 0.0','  k2: 0.0','  p1: 0.0','  p2: 0.0','  k3: 0.0',
+    '  fps: 30.0','  cols: 320','  rows: 240','  color_order: RGB','Preprocessing:','  min_size: 320',
+    'Feature:','  name: iPhone WASM ORB','  scale_factor: 1.2','  num_levels: 4',
+    '  ini_fast_threshold: 20','  min_fast_threshold: 7'].join('\n');
+  worker.postMessage({type:'init',yaml,width:W,height:H});
+  status('正在加载真实 Stella WebAssembly 模块…');
+ }catch(e){status('启动失败：'+String(e?.message||e));stop();}
+};
+function tick(t){
+ if(!running)return;
+ raf=requestAnimationFrame(tick);
+ if(pending||document.hidden||video.readyState<2||t-lastSent<150)return;
+ lastSent=t;
+ const vw=video.videoWidth,vh=video.videoHeight;if(!vw||!vh)return;
+ const scale=Math.max(W/vw,H/vh),cw=W/scale,ch=H/scale;
+ ctx.drawImage(video,(vw-cw)/2,(vh-ch)/2,cw,ch,0,0,W,H);
+ const pixels=ctx.getImageData(0,0,W,H).data;
+ pending=true;worker.postMessage({type:'frame',pixels:pixels.buffer,width:W,height:H,timestamp:t/1000,sequence:++sequence,mode:$('mode').value},[pixels.buffer]);
+}
+drawTrail();
+</script></body></html>
