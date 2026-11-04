@@ -48,7 +48,7 @@ async function loadBuildInfo(){
 void loadBuildInfo();
 const video=$('video'),preview=$('preview'),ctx=preview.getContext('2d',{willReadFrequently:true}),trail=$('trail'),tc=trail.getContext('2d');
 let stream=null,worker=null,running=false,pending=false,sequence=0,frames=0,valid=0,errors=0,raf=0,lastSent=0;
-let parts=[],current=[],lastValidAt=0,hadLoss=false,lossFrames=0,recoveries=0,lastFrameReceived=0,observedFps=0,lastHeading=null;
+let parts=[],current=[],gapLinks=[],lastValidAt=0,hadLoss=false,lossFrames=0,recoveries=0,lastFrameReceived=0,observedFps=0,lastHeading=null;
 let mapEpoch=1,epochValid=0,lostStartedAt=0;
 const diagnostics={schema:'pai-vin-stella-browser-diagnostic-v1',app:'Stella C++/WASM',startedAt:null,
   source:'genuine native Stella only',frames:[],errors:[],init:false};
@@ -88,6 +88,12 @@ function drawTrail(){
   tc.beginPath();segment.forEach((p,i)=>{const [x,y]=project(p);if(!i)tc.moveTo(x,y);else tc.lineTo(x,y)});
   tc.strokeStyle=idx===parts.length?'#79e2b9':'#687e9a';tc.lineWidth=2.6;tc.stroke();
  }
+ // Same-map positions are genuine; the path taken during Lost is unknown.
+ for(const [a,b] of gapLinks){
+  const [ax,ay]=project(a),[bx,by]=project(b);
+  tc.beginPath();tc.setLineDash([5,6]);tc.moveTo(ax,ay);tc.lineTo(bx,by);
+  tc.strokeStyle='#e8b878';tc.lineWidth=1.5;tc.stroke();tc.setLineDash([]);
+ }
  if(current.length){
   const [x,y]=project(current[current.length-1]);
   tc.fillStyle='#ffd180';tc.beginPath();tc.arc(x,y,4,0,Math.PI*2);tc.fill();
@@ -115,7 +121,7 @@ $('start').onclick=async()=>{
  $('start').disabled=true;quality.disabled=true;status('正在申请摄像头权限…');
  try{
   mapEpoch=1;epochValid=0;lostStartedAt=0;
-  frames=0;valid=0;errors=0;lossFrames=0;recoveries=0;lastFrameReceived=0;observedFps=0;hadLoss=false;current=[];parts=[];lastHeading=null;lastSent=0;pending=false;sequence=0;
+  frames=0;valid=0;errors=0;lossFrames=0;recoveries=0;lastFrameReceived=0;observedFps=0;hadLoss=false;current=[];parts=[];gapLinks=[];lastHeading=null;lastSent=0;pending=false;sequence=0;
   diagnostics.frames=[];diagnostics.errors=[];
   $('native-diagnostics').textContent='Stella 原生状态：等待图像';
   const rich=quality.value==='rich';
@@ -150,7 +156,7 @@ $('start').onclick=async()=>{
     if(d.pose){
      const p=[d.pose[12],d.pose[14]];
      if(Number.isFinite(p[0])&&Number.isFinite(p[1])){
-      if(hadLoss && current.length){parts.push(current);current=[];if(parts.length>3)parts.shift();}
+      if(hadLoss && current.length){gapLinks.push([current[current.length-1],p]);parts.push(current);current=[];}
       if(hadLoss&&valid>0) recoveries++;
       hadLoss=false;lossFrames=0;lostStartedAt=0;current.push(p);valid++;epochValid++;lastValidAt=performance.now();
       lastHeading=[d.pose[8],d.pose[10]].every(Number.isFinite)?[d.pose[8],d.pose[10]]:null;
