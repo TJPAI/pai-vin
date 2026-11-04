@@ -28,8 +28,14 @@ def main(root: Path, check: bool) -> None:
             ("void mapping_module::run() {",
              """#ifdef __EMSCRIPTEN__
 void mapping_module::process_pending_keyframes_sync() {
+    const auto queued_before = get_num_queued_keyframes();
     while (keyframe_is_queued()) {
         mapping_with_new_keyframe();
+    }
+    if (queued_before > 0) {
+        spdlog::info("PAI_STELLA_SYNC_MAPPER queued={} keyframes={} landmarks={}",
+                     queued_before, map_db_->get_num_keyframes(),
+                     map_db_->get_num_landmarks());
     }
 }
 void mapping_module::reset_sync() {
@@ -475,6 +481,19 @@ unsigned int robust::brute_force_match"""
     }
 
     // acquire more 2D-3D matches by projecting the local landmarks to the current frame"""
+    ))
+    # Distinguish failure to REQUEST a new keyframe from failure to PROCESS
+    # the synchronous mapper queue. Do not change geometry or thresholds.
+    files["src/stella_vslam/tracking_module.cc"].append((
+        """            keyfrm_inserter_.insert_new_keyframe(map_db_, curr_frm_);
+        }""",
+        """            keyfrm_inserter_.insert_new_keyframe(map_db_, curr_frm_);
+#ifdef __EMSCRIPTEN__
+            spdlog::info("PAI_STELLA_KF_INSERT frame={} tracked={} reliable={} keyframes_before_sync={}",
+                         curr_frm_.id_, num_tracked_lms, num_reliable_lms,
+                         map_db_->get_num_keyframes());
+#endif
+        }"""
     ))
     # Read-only per-frame internal state exported to iPhone diagnostics.
     # Values: tracker state (0 init/1 tracking/2 lost), keyframe count,
