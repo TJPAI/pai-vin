@@ -30,6 +30,7 @@ async function init(message) {
 function frame(message) {
   if (!mod || !imagePtr) return send('error', {message:'engine_not_ready'});
   try {
+    const begin = performance.now();
     const rgba = new Uint8Array(message.pixels);
     if (rgba.byteLength !== frameBytes) throw Error('image dimensions mismatch');
     mod.HEAPU8.set(rgba, imagePtr);
@@ -38,7 +39,7 @@ function frame(message) {
       const count = mod.ccall('pai_stella_features_rgba', 'number',
         ['number','number','number','number'], args);
       if (count < 0) throw Error('native ORB: ' + lastError());
-      send('frame', {sequence:message.sequence, features:count, pose:null, mode:'features'});
+      send('frame', {sequence:message.sequence, features:count, pose:null, mode:'features', processingMs:performance.now()-begin});
       return;
     }
     const rc = mod.ccall('pai_stella_track_rgba','number',
@@ -49,7 +50,7 @@ function frame(message) {
       pose = Array.from(new Float64Array(mod.HEAPU8.buffer, posePtr, 16));
       if (!pose.every(Number.isFinite)) throw Error('native pose contains non-finite values');
     }
-    send('frame', {sequence:message.sequence, pose, features:null, mode:'track'});
+    send('frame', {sequence:message.sequence, pose, features:null, mode:'track', processingMs:performance.now()-begin});
   } catch (error) {
     send('error', {message: String(error?.message || error)});
   }
