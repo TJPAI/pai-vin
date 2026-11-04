@@ -1,0 +1,94 @@
+name: PAI-VIN g2o Eigen3 transitive WASM diagnostic
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/v4-g2o-eigen-transitive-probe.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  eigen-transitive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '3.1.74'
+      - name: Install genuine Eigen3 package
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libeigen3-dev
+          test -f /usr/share/eigen3/cmake/Eigen3Config.cmake
+          test -f /usr/include/eigen3/Eigen/Core
+      - name: Configure and compile actual pinned g2o WASM dependencies
+        run: |
+          set -euxo pipefail
+          mkdir -p evidence
+          git clone --quiet https://github.com/RainerKuemmerle/g2o.git /tmp/pai-g2o-src
+          git -C /tmp/pai-g2o-src checkout --detach fd65627348213d56866b24c0b7d054bcf105f0a5
+          test "$(git -C /tmp/pai-g2o-src rev-parse HEAD)" = fd65627348213d56866b24c0b7d054bcf105f0a5
+          emcmake cmake -S /tmp/pai-g2o-src -B /tmp/pai-g2o-build \
+            -DCMAKE_INSTALL_PREFIX=/tmp/pai-wasm-prefix -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF -DG2O_BUILD_APPS=OFF -DG2O_BUILD_EXAMPLES=OFF \
+            -DBUILD_UNITTESTS=OFF -DG2O_BUILD_BENCHMARKS=OFF \
+            -DG2O_USE_OPENGL=OFF -DG2O_USE_OPENMP=OFF -DG2O_USE_CHOLMOD=OFF \
+            -DG2O_USE_CSPARSE=OFF -DG2O_USE_LGPL_LIBS=OFF -DG2O_USE_LOGGING=OFF \
+            -DDO_SSE_AUTODETECT=OFF -DEigen3_DIR=/usr/share/eigen3/cmake \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH > evidence/g2o-configure.log 2>&1
+          emmake cmake --build /tmp/pai-g2o-build --target core stuff types_sba types_sim3 solver_dense solver_eigen -j2 > evidence/g2o-build.log 2>&1
+          emmake cmake --install /tmp/pai-g2o-build > evidence/g2o-install.log 2>&1
+          test -f /tmp/pai-wasm-prefix/lib/cmake/g2o/g2oConfig.cmake
+          cp /tmp/pai-wasm-prefix/lib/cmake/g2o/g2oConfig.cmake evidence/g2oConfig.cmake
+          grep -n -E 'Eigen3|find_dependency|g2o_FIND|csparse' evidence/g2oConfig.cmake > evidence/g2o-dependencies.txt || true
+      - name: Test genuine transitive package discovery without Stella or OpenCV
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pai-find-g2o
+          cat > /tmp/pai-find-g2o/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.20)
+          project(pai_g2o_import LANGUAGES CXX)
+          find_package(Eigen3 CONFIG REQUIRED)
+          message(STATUS "PAI_EIGEN_VERSION=${Eigen3_VERSION}")
+          message(STATUS "PAI_EIGEN_DIR=${Eigen3_DIR}")
+          find_package(g2o CONFIG REQUIRED)
+          foreach(target g2o::core g2o::stuff g2o::types_sba g2o::types_sim3 g2o::solver_dense g2o::solver_eigen)
+            if(NOT TARGET ${target})
+              message(FATAL_ERROR "Genuine g2o export missing: ${target}")
+            endif()
+          endforeach()
+          message(STATUS "PAI_G2O_TRANSITIVE_SUCCESS")
+          EOF
+          for mode in BOTH NEVER ONLY; do
+            set +e
+            emcmake cmake -S /tmp/pai-find-g2o -B "/tmp/pai-g2o-import-${mode}" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_PREFIX_PATH=/tmp/pai-wasm-prefix \
+              -Dg2o_DIR=/tmp/pai-wasm-prefix/lib/cmake/g2o \
+              -DEigen3_DIR=/usr/share/eigen3/cmake \
+              -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE="${mode}" \
+              --debug-find-pkg=Eigen3 > "evidence/find-${mode}.log" 2>&1
+            rc=$?
+            set -e
+            echo "${rc}" > "evidence/find-${mode}.exit"
+            echo "Mode ${mode}: exit ${rc}" >> "$GITHUB_STEP_SUMMARY"
+            grep -n -m 15 -E 'PAI_|CMake Error|Eigen3Config.cmake|could not be found|not found' "evidence/find-${mode}.log" | tail -n 15 || true
+          done
+          if grep -qx 0 evidence/find-BOTH.exit; then
+            echo 'Genuine g2o Eigen3 transitive import confirmed with BOTH' >> "$GITHUB_STEP_SUMMARY"
+          elif grep -qx 0 evidence/find-NEVER.exit; then
+            echo 'ONLY NEVER mode imports genuine packages; inspect path root filtering before integrating into Stella' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No successful import: inspect archived genuine package diagnostics' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g2o-eigen-transitive-diagnostics
+          path: evidence/
+          retention-days: 14
