@@ -2,7 +2,7 @@
  * Hosted separately from AlvaAR; real concurrent mapping is NOT yet validated.
  */
 'use strict';
-let mod = null, imagePtr = 0, posePtr = 0, frameBytes = 0, width = 0, height = 0;
+let mod = null, imagePtr = 0, posePtr = 0, diagPtr = 0, frameBytes = 0, width = 0, height = 0;
 function send(type, data = {}) { self.postMessage({type, ...data}); }
 function lastError() {
   if (!mod) return 'module_unavailable';
@@ -21,7 +21,8 @@ async function init(message) {
     frameBytes = width * height * 4;
     imagePtr = mod._malloc(frameBytes);
     posePtr = mod._malloc(16 * 8);
-    if (!imagePtr || !posePtr) throw Error('WASM frame buffer allocation failed');
+    diagPtr = mod._malloc(5 * 4);
+    if (!imagePtr || !posePtr || !diagPtr || typeof mod._pai_stella_get_diagnostics !== 'function') throw Error('Stella V1.3 diagnostics ABI missing or allocation failed');
     send('ready', {message: '真实 Stella 引擎已装载。尚未确认实时定位。'});
   } catch (error) {
     send('error', {message: String(error?.message || error)});
@@ -50,7 +51,12 @@ function frame(message) {
       pose = Array.from(new Float64Array(mod.HEAPU8.buffer, posePtr, 16));
       if (!pose.every(Number.isFinite)) throw Error('native pose contains non-finite values');
     }
-    send('frame', {sequence:message.sequence, pose, features:null, mode:'track', processingMs:performance.now()-begin});
+    const diagResult=mod._pai_stella_get_diagnostics(diagPtr);
+    const diag=diagResult===0?Array.from(new Int32Array(mod.HEAPU8.buffer,diagPtr,5)):null;
+    send('frame', {sequence:message.sequence, pose, features:null, mode:'track',
+      trackingState:diag?.[0]??null,keyframes:diag?.[1]??null,
+      mapPoints:diag?.[2]??null,orbCount:diag?.[3]??null,
+      associatedPoints:diag?.[4]??null,processingMs:performance.now()-begin});
   } catch (error) {
     send('error', {message: String(error?.message || error)});
   }
@@ -64,7 +70,8 @@ self.onmessage = async e => {
         mod._pai_stella_destroy();
         if (imagePtr) mod._free(imagePtr);
         if (posePtr) mod._free(posePtr);
+        if (diagPtr) mod._free(diagPtr);
       }
-    } finally { mod=null; imagePtr=posePtr=frameBytes=0; send('stopped'); }
+    } finally { mod=null; imagePtr=posePtr=diagPtr=frameBytes=0; send('stopped'); }
   }
 };
