@@ -141,7 +141,7 @@ jobs:
           wasm_available=path.is_file() and path.stat().st_size>0
           data={
             "schema":"pai-vin-stella-build-v1",
-            "appVersion":"V1.4",
+            "appVersion":"V1.5",
             "appCommit":os.environ["APP_COMMIT"],
             "builtAt":datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
             "stellaWasmRunId":os.environ.get("STELLA_VALIDATED_RUN","") if wasm_available else "",
@@ -152,8 +152,8 @@ jobs:
           print(data)
           PY
           python3 -m json.tool dist/stella-build-info.json > /dev/null
-          grep -q '"appVersion": "V1.4"' dist/stella-build-info.json
-          echo "Stella version JSON valid and V1.4 embedded" >> "$GITHUB_STEP_SUMMARY"
+          grep -q '"appVersion": "V1.5"' dist/stella-build-info.json
+          echo "Stella version JSON valid and V1.5 embedded" >> "$GITHUB_STEP_SUMMARY"
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload clean PWA
