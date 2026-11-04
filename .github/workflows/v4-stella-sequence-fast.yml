@@ -39,11 +39,13 @@ jobs:
         run: |
           set -euo pipefail
           : > stella-parallax-test.log
-          for preset in baseline wide near; do
-            echo "=== STELLA 3D parallax preset=$preset ===" | tee -a stella-parallax-test.log
-            PAI_PARALLAX_PRESET="$preset" timeout 150s node tools/v4-stella/stella-parallax-node-smoke.cjs /tmp/stella-validated/pai_stella_browser.js | tee -a stella-parallax-test.log
+          for texture in 41 16 10; do
+            for preset in baseline wide near; do
+              echo "=== STELLA 3D parallax preset=$preset texture=$texture ===" | tee -a stella-parallax-test.log
+              PAI_TEXTURE_SCALE="$texture" PAI_PARALLAX_PRESET="$preset" timeout 150s node tools/v4-stella/stella-parallax-node-smoke.cjs /tmp/stella-validated/pai_stella_browser.js | tee -a stella-parallax-test.log
+            done
           done
-          test "$(grep -c 'PAI_STELLA_GEOMETRIC_PARALLAX_MULTIFRAME_PASS' stella-parallax-test.log)" -eq 3
+          test "$(grep -c 'PAI_STELLA_GEOMETRIC_PARALLAX_MULTIFRAME_PASS' stella-parallax-test.log)" -eq 9
           echo 'Real Stella WASM geometric parallax sequence completed; native pose count recorded in log' >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve exact sequence test results
         if: always()
