@@ -9,8 +9,8 @@ select,input{padding:8px;background:#0c1728;border:1px solid #53708a;color:white
 canvas{display:block;width:100%;background:#08131f;border-radius:8px}#preview{aspect-ratio:4/3}#trail{aspect-ratio:1}
 .small{font-size:13px;color:#aec4dc}.warn{color:#ffd18c}.good{color:#8ee3b9}code{overflow-wrap:anywhere}
 </style></head><body><main>
-<h1>PAI-VIN Stella · 原生 WASM 试验</h1>
-<p id="build-version" class="small" style="padding:9px;background:#233650;border-radius:8px" aria-live="polite">版本检查中…</p>
+<h1>PAI-VIN Stella V1.2 · 原生 WASM 试验</h1>
+<p id="build-version" class="small" style="padding:9px;background:#233650;border-radius:8px" aria-live="polite">V1.2 · 正在核对 Stella WASM 构建…</p>
 <p class="warn">这是 Stella 原生引擎测试，不是已经完成的室内定位系统。只有引擎返回真实位姿才会绘制轨迹。当前单线程 WASM 尚未验证连续建图，0.5 米精度及持久重定位均未实现。</p>
 <section>
 <button id="start">启动 Stella 与摄像头</button><button id="stop" disabled>停止</button><button id="export" type="button">导出诊断 JSON</button>
@@ -33,15 +33,15 @@ async function loadBuildInfo(){
     const response=await fetch('./stella-build-info.json?ts='+Date.now(),{cache:'no-store'});
     if(!response.ok)throw Error('HTTP '+response.status);
     const info=await response.json();
-    if(info.schema!=='pai-vin-stella-build-v1'||!info.appCommit)throw Error('Invalid metadata');
+    if(info.schema!=='pai-vin-stella-build-v1'||!info.appCommit||info.appVersion!=='V1.2')throw Error('Invalid/mismatched metadata');
     buildInfo=info;
     const appSha=info.appCommit.slice(0,10);
     const engineSha=info.stellaSourceCommit?info.stellaSourceCommit.slice(0,10):'无';
     const engineRun=info.stellaWasmRunId?('#'+info.stellaWasmRunId):'未打包';
     const engineStatus=info.stellaWasmRunId?'已打包':'未打包';
-    label.textContent='页面版本 '+appSha+' · Stella WASM '+engineRun+'（'+engineStatus+'；构建提交 '+engineSha+'） · 部署 '+(info.builtAt||'未知');
+    label.textContent='V1.2 · 页面 '+appSha+' · Stella WASM '+engineRun+'（'+engineStatus+'；构建提交 '+engineSha+'） · 部署 '+(info.builtAt||'未知');
   }catch(error){
-    label.textContent='版本信息不可用，无法确认当前页面与 WASM 是否一致；请刷新后重试';
+    label.textContent='V1.2 · 构建详情校验失败：'+String(error?.message||error)+'；请刷新后重试';
   }
 }
 void loadBuildInfo();
