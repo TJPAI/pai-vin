@@ -11,9 +11,9 @@ function lastError() {
 }
 async function init(message) {
   try {
-    importScripts('./vendor/stella/pai_stella_browser.js');
+    importScripts('./vendor/stella/pai_stella_browser.js?cache='+Date.now());
     if (typeof self.createPAIStella !== 'function') throw Error('Stella WASM factory missing');
-    mod = await self.createPAIStella({locateFile: file => './vendor/stella/' + file});
+    mod = await self.createPAIStella({locateFile: file => './vendor/stella/' + file + '?cache=' + Date.now()});
     if (!mod.HEAPU8 || !mod._pai_stella_create) throw Error('Stella browser ABI incomplete');
     const rc = mod.ccall('pai_stella_create', 'number', ['string'], [message.yaml]);
     if (rc !== 0) throw Error('Stella init error ' + rc + ': ' + lastError());
