@@ -548,4 +548,7 @@ jobs:
           grep -q "PAI_STELLA_BROWSER_ABI_MULTIFRAME_PASS frames=25" probe-results/stella-browser-node.log || { echo "Multi-frame Stella test missing"; exit 1; }
           test -f probe-results/stella-parallax-exit-code.txt || { echo "Stella geometric parallax test did not run"; exit 1; }
           test "$(cat probe-results/stella-parallax-exit-code.txt)" = "0" || { echo "Stella multi-depth parallax sequence failed"; exit 1; }
-          echo "Stella browser ABI executed real monocular ORB frame extraction in Node; Safari SLAM untested" >> "$GITHUB_STEP_SUMMARY"
+          test -f probe-results/stella-turn-return-exit-code.txt || { echo "Turn-return native pose regression not executed"; exit 1; }
+          test "$(cat probe-results/stella-turn-return-exit-code.txt)" = "0" || { echo "Turn-return native pose regression FAILED; cannot claim recovered SLAM"; exit 1; }
+          grep -q "PAI_STELLA_TURN_RETURN_RECOVERY_VERIFIED" probe-results/stella-turn-return-node.log || { echo "Turn-return recovery proof absent"; exit 1; }
+          echo "Stella synthetic turn-return native pose recovery PASS; Safari still requires field verification" >> "$GITHUB_STEP_SUMMARY"
