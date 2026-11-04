@@ -11,7 +11,7 @@ permissions:
 jobs:
   stella-wasm-probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - name: Setup Emscripten
@@ -312,6 +312,31 @@ jobs:
             stella_rc=$?
             echo "$stella_rc" > probe-results/stella-g2o-configure-exit-code.txt
             echo "stella CMake using genuine g2o exports exit=$stella_rc; csparse targets NOT faked" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$stella_rc" -eq 0 ]; then
+              echo "Stella CMake configure PASS; compiling real stella_vslam C++ WASM target" >> "$GITHUB_STEP_SUMMARY"
+              timeout 480s emmake cmake --build /tmp/stella-vslam/build-wasm-g2o --target stella_vslam -j2 \
+                > probe-results/stella-wasm-core-build.log 2>&1
+              stella_build_rc=$?
+              echo "$stella_build_rc" > probe-results/stella-build-exit-code.txt
+              if [ "$stella_build_rc" -eq 0 ]; then
+                find /tmp/stella-vslam/build-wasm-g2o -type f -name '*stella_vslam*.a' -print > probe-results/stella-core-archives.txt
+                if [ ! -s probe-results/stella-core-archives.txt ]; then
+                  stella_build_rc=90
+                  echo "$stella_build_rc" > probe-results/stella-build-exit-code.txt
+                  echo 'Stella target exit 0 but static archive NOT found' >> "$GITHUB_STEP_SUMMARY"
+                else
+                  echo 'Stella C++ WASM static archive compiled successfully (browser runtime still NOT tested)' >> "$GITHUB_STEP_SUMMARY"
+                  cat probe-results/stella-core-archives.txt
+                fi
+              fi
+              if [ "$stella_build_rc" -ne 0 ]; then
+                echo "Stella C++ WASM compile FAILED exit=$stella_build_rc" >> "$GITHUB_STEP_SUMMARY"
+                grep -n -m 20 -E 'error:|fatal error:|undefined symbol|Error' probe-results/stella-wasm-core-build.log || true
+                tail -n 55 probe-results/stella-wasm-core-build.log
+              fi
+            else
+              echo 'Stella C++ build SKIPPED because configure did not pass' >> "$GITHUB_STEP_SUMMARY"
+            fi
             grep -n -m 18 -E 'CMake Error|Could NOT find|NOT_FOUND|not found|[Ee]rror' probe-results/stella-g2o-configure.log || true
             tail -n 55 probe-results/stella-g2o-configure.log
           else
