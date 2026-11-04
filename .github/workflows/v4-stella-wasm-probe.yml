@@ -426,8 +426,8 @@ jobs:
             timeout 70s node tools/v4-stella/stella-bridge-node-smoke.cjs /tmp/stella-vslam/build-wasm-g2o/pai_stella_browser.js > probe-results/stella-browser-node.log 2>&1
             node_rc=$?
             echo "$node_rc" > probe-results/stella-browser-node-exit-code.txt
-            if [ "$node_rc" -eq 0 ] && grep -q 'PAI_STELLA_BROWSER_ABI_NODE_PASS' probe-results/stella-browser-node.log; then
-              echo 'Stella real RGBA/ORB browser ABI Node smoke PASS (Safari tracking not verified)' >> "$GITHUB_STEP_SUMMARY"
+            if [ "$node_rc" -eq 0 ] && grep -q 'PAI_STELLA_BROWSER_ABI_NODE_PASS' probe-results/stella-browser-node.log && grep -q 'PAI_STELLA_BROWSER_ABI_MULTIFRAME_PASS frames=25' probe-results/stella-browser-node.log; then
+              echo 'Stella real RGBA/ORB multi-frame browser ABI Node smoke PASS (pose accuracy and Safari tracking not verified)' >> "$GITHUB_STEP_SUMMARY"
             else
               echo "Stella browser ABI Node failure exit=$node_rc" >> "$GITHUB_STEP_SUMMARY"
             fi
@@ -472,4 +472,5 @@ jobs:
           test "$(cat probe-results/stella-browser-build-exit-code.txt)" = "0" || { echo "Stella browser ABI link failed"; exit 1; }
           test -f probe-results/stella-browser-node-exit-code.txt || { echo "Stella browser ABI Node test was never attempted"; exit 1; }
           test "$(cat probe-results/stella-browser-node-exit-code.txt)" = "0" || { echo "Stella browser ABI Node test failed"; exit 1; }
+          grep -q "PAI_STELLA_BROWSER_ABI_MULTIFRAME_PASS frames=25" probe-results/stella-browser-node.log || { echo "Multi-frame Stella test missing"; exit 1; }
           echo "Stella browser ABI executed real monocular ORB frame extraction in Node; Safari SLAM untested" >> "$GITHUB_STEP_SUMMARY"
