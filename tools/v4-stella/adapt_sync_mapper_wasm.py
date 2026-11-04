@@ -573,6 +573,36 @@ bool tracking_module::relocalize_by_pose"""
         return false;
     }"""
     ))
+    # A turn can have sufficient projected candidates but almost no geometric
+    # inliers. Retry from the original motion prediction with a wider search,
+    # then re-optimize; never accept a pose without the original inlier gate.
+    files["src/stella_vslam/module/frame_tracker.cc"].append((
+        """    if (num_valid_matches < num_matches_thr_) {
+        spdlog::debug("motion based tracking failed: {} inlier matches < {}", num_valid_matches, num_matches_thr_);
+        return false;
+    }""",
+        """    if (num_valid_matches < num_matches_thr_) {
+#ifdef __EMSCRIPTEN__
+        spdlog::info("PAI_STELLA_MOTION_INLIER_RETRY frame={} first_inliers={}",
+                     curr_frm.id_, num_valid_matches);
+        curr_frm.set_pose_cw(velocity * last_frm.get_pose_cw());
+        curr_frm.erase_landmarks();
+        const auto wide_matches = projection_matcher.match_current_and_last_frames(curr_frm, last_frm, 4 * margin_);
+        if (wide_matches >= num_matches_thr_) {
+            Mat44_t retry_pose;
+            std::vector<bool> retry_outliers;
+            pose_optimizer_->optimize(curr_frm, retry_pose, retry_outliers);
+            curr_frm.set_pose_cw(retry_pose);
+            const auto retry_inliers = discard_outliers(retry_outliers, curr_frm);
+            spdlog::info("PAI_STELLA_MOTION_INLIER_RESULT frame={} candidates={} inliers={}",
+                         curr_frm.id_, wide_matches, retry_inliers);
+            if (retry_inliers >= num_matches_thr_) return true;
+        }
+#endif
+        spdlog::debug("motion based tracking failed: {} inlier matches < {}", num_valid_matches, num_matches_thr_);
+        return false;
+    }"""
+    ))
     # Read-only per-frame internal state exported to iPhone diagnostics.
     # Values: tracker state (0 init/1 tracking/2 lost), keyframe count,
     # landmark count, observed ORB count, associated 3D landmark count.
