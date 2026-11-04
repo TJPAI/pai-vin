@@ -412,6 +412,40 @@ unsigned int robust::brute_force_match"""
 
         // acquire more 2D-3D matches by projecting the local landmarks to the current frame"""
     ))
+    # Upstream keyframe insertion gates mature maps on camera TRANSLATION.
+    # During an in-place turn translation stays ~zero, so the changing
+    # viewing direction fails to gain any new keyframe coverage.
+    # Allow genuine map-backed rotation keyframes while tracking is stable.
+    # This does not create points from pure rotation or bypass pose checks.
+    files["src/stella_vslam/module/keyframe_inserter.cc"] = [(
+        """    return (max_interval_elapsed || max_distance_traveled || view_changed || not_enough_lms)
+           && (!enough_keyfrms || (min_interval_elapsed && min_distance_traveled))
+           && !tracking_is_unstable
+           && !almost_all_lms_are_tracked
+           && !mapper_is_skipping_localBA;""",
+        """#ifdef __EMSCRIPTEN__
+    bool rotation_keyframe_needed = false;
+    if (last_inserted_keyfrm && num_tracked_lms >= 20
+        && curr_frm.timestamp_ >= last_inserted_keyfrm->timestamp_ + 0.25) {
+        // Compare optical axes in the same world coordinates. A 12-degree
+        // yaw/pitch change captures a new viewing direction at zero translation.
+        const double optical_axis_cos =
+            curr_frm.get_rot_wc().col(2).dot(last_inserted_keyfrm->get_rot_wc().col(2));
+        rotation_keyframe_needed = optical_axis_cos < 0.9781476007338057;
+    }
+    if (rotation_keyframe_needed && !mapper_is_skipping_localBA) {
+        spdlog::info("PAI_STELLA_ROTATION_KEYFRAME frame={} tracked={} cos_angle={}",
+                     curr_frm.id_, num_tracked_lms,
+                     curr_frm.get_rot_wc().col(2).dot(last_inserted_keyfrm->get_rot_wc().col(2)));
+        return true;
+    }
+#endif
+    return (max_interval_elapsed || max_distance_traveled || view_changed || not_enough_lms)
+           && (!enough_keyfrms || (min_interval_elapsed && min_distance_traveled))
+           && !tracking_is_unstable
+           && !almost_all_lms_are_tracked
+           && !mapper_is_skipping_localBA;"""
+    )]
     # Read-only per-frame internal state exported to iPhone diagnostics.
     # Values: tracker state (0 init/1 tracking/2 lost), keyframe count,
     # landmark count, observed ORB count, associated 3D landmark count.
