@@ -130,6 +130,9 @@ $('start').onclick=async()=>{
     'Feature:','  name: iPhone WASM ORB','  scale_factor: 1.2','  num_levels: 6',
     '  ini_fast_threshold: 12','  min_fast_threshold: 6',
     'Initializer:','  min_num_valid_pts: 35','  min_num_triangulated_pts: 25','  parallax_deg_threshold: 0.8','  num_ransac_iterations: 150',
+    'Tracking:','  init_retry_threshold_time: 1.0','  enable_auto_relocalization: true',
+    'Relocalizer:','  min_num_bow_matches: 15','  min_num_valid_obs: 30','  max_num_ransac_iter: 50',
+    'KeyframeInserter:','  max_interval: 0.5','  min_interval: 0.12',
     'Mapping:','  enable_interruption_of_landmark_generation: false'].join('\n');
   worker.postMessage({type:'init',yaml,width:W,height:H});
   status('正在加载真实 Stella WebAssembly 模块…');
