@@ -495,6 +495,45 @@ unsigned int robust::brute_force_match"""
 #endif
         }"""
     ))
+    # Deterministic time-zero bug: upstream initializes last_reloc timestamp
+    # and ID to ZERO. Consequently the '1 second since relocalization' special
+    # gates fire for the ENTIRE first second even if NO relocalization happened.
+    # In #86 the first stable map has just two keyframes, frame 26 fails with
+    # 39 (<40) inlier landmarks before turning even starts, and the keyframe
+    # insertion gate prevents any coverage growth before frame 30.
+    # Apply strict gates only to a genuine recorded relocalization. The true
+    # 40-landmark geometric threshold remains unchanged.
+    files["src/stella_vslam/tracking_module.cc"].extend([
+        (
+            """    if (curr_frm_.timestamp_ < last_reloc_frm_timestamp_ + 1.0 && num_tracked_lms < 2 * num_tracked_lms_thr) {""",
+            """#ifdef __EMSCRIPTEN__
+    if (last_reloc_frm_id_ > 0 && curr_frm_.timestamp_ < last_reloc_frm_timestamp_ + 1.0
+        && num_tracked_lms < 2 * num_tracked_lms_thr) {
+#else
+    if (curr_frm_.timestamp_ < last_reloc_frm_timestamp_ + 1.0 && num_tracked_lms < 2 * num_tracked_lms_thr) {
+#endif"""
+        ),
+        (
+            """    if (curr_frm_.timestamp_ < last_reloc_frm_timestamp_ + 1.0) {
+        return false;
+    }
+
+    // check the new keyframe is needed""",
+            """#ifdef __EMSCRIPTEN__
+    if (last_reloc_frm_id_ > 0 && curr_frm_.timestamp_ < last_reloc_frm_timestamp_ + 1.0) {
+        spdlog::info("PAI_STELLA_KF_BLOCKED_AFTER_RELOC frame={} since_reloc={}",
+                     curr_frm_.id_, curr_frm_.timestamp_ - last_reloc_frm_timestamp_);
+        return false;
+    }
+#else
+    if (curr_frm_.timestamp_ < last_reloc_frm_timestamp_ + 1.0) {
+        return false;
+    }
+#endif
+
+    // check the new keyframe is needed"""
+        )
+    ])
     # Read-only per-frame internal state exported to iPhone diagnostics.
     # Values: tracker state (0 init/1 tracking/2 lost), keyframe count,
     # landmark count, observed ORB count, associated 3D landmark count.
