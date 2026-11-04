@@ -130,6 +130,7 @@ Mapping:
       posesBeforeTurn,posesDuringTurn,posesAfterReturn,nativePoses}));
     assert(posesBeforeTurn>0, 'Turn regression inconclusive: no real initialized map before turn');
     assert(posesAfterReturn>0, 'Turn regression FAIL: no real pose recovered after returning to original mapped view');
+    assert(posesDuringTurn>=19, `Turn continuity FAIL: only ${posesDuringTurn}/24 valid camera poses during simulated turn; must sustain >=19`);
     console.log('PAI_STELLA_TURN_RETURN_RECOVERY_VERIFIED');
   }
   if(nativePoses===0)console.log('PAI_STELLA_PARALLAX_INIT_NOT_YET_VALIDATED');
