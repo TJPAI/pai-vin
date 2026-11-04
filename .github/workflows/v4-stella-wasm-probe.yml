@@ -408,6 +408,44 @@ jobs:
             tail -n 45 probe-results/g2o-wasm-build.log 2>/dev/null || true
           fi
           set -e
+      - name: Build and Node-verify real Stella browser RGBA/pose ABI
+        shell: bash
+        run: |
+          set -uo pipefail
+          if [ ! -f probe-results/stella-node-exit-code.txt ] || [ "$(cat probe-results/stella-node-exit-code.txt)" != "0" ]; then
+            echo 'Constructor smoke prerequisite failed' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          timeout 240s emmake cmake --build /tmp/stella-vslam/build-wasm-g2o --target pai_stella_browser -j2 > probe-results/stella-browser-build.log 2>&1
+          browser_rc=$?
+          echo "$browser_rc" > probe-results/stella-browser-build-exit-code.txt
+          if [ "$browser_rc" -eq 0 ]; then
+            test -s /tmp/stella-vslam/build-wasm-g2o/pai_stella_browser.js
+            test -s /tmp/stella-vslam/build-wasm-g2o/pai_stella_browser.wasm
+            timeout 70s node tools/v4-stella/stella-bridge-node-smoke.cjs /tmp/stella-vslam/build-wasm-g2o/pai_stella_browser.js > probe-results/stella-browser-node.log 2>&1
+            node_rc=$?
+            echo "$node_rc" > probe-results/stella-browser-node-exit-code.txt
+            if [ "$node_rc" -eq 0 ] && grep -q 'PAI_STELLA_BROWSER_ABI_NODE_PASS' probe-results/stella-browser-node.log; then
+              echo 'Stella real RGBA/ORB browser ABI Node smoke PASS (Safari tracking not verified)' >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "Stella browser ABI Node failure exit=$node_rc" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            tail -n 45 probe-results/stella-browser-node.log
+          else
+            echo "Stella browser ABI link failed exit=$browser_rc" >> "$GITHUB_STEP_SUMMARY"
+            grep -n -m 20 -E 'error:|undefined symbol|Error' probe-results/stella-browser-build.log || true
+            tail -n 50 probe-results/stella-browser-build.log
+          fi
+      - name: Save genuine Stella browser ABI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stella-browser-abi-js-wasm
+          path: |
+            /tmp/stella-vslam/build-wasm-g2o/pai_stella_browser.js
+            /tmp/stella-vslam/build-wasm-g2o/pai_stella_browser.wasm
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Save configure evidence (including blockers)
         uses: actions/upload-artifact@v4
         with:
@@ -429,3 +467,8 @@ jobs:
           test "$(cat probe-results/stella-link-exit-code.txt)" = "0" || { echo "JS/WASM link failed"; exit 1; }
           test "$(cat probe-results/stella-node-exit-code.txt)" = "0" || { echo "Node.js WASM execution did not pass"; exit 1; }
           echo "Stella ctor + actual monocular frame ORB processing PASS in Node; Safari / camera pose tracking NOT verified" >> "$GITHUB_STEP_SUMMARY"
+          test -f probe-results/stella-browser-build-exit-code.txt || { echo "Stella browser ABI link was never attempted"; exit 1; }
+          test "$(cat probe-results/stella-browser-build-exit-code.txt)" = "0" || { echo "Stella browser ABI link failed"; exit 1; }
+          test -f probe-results/stella-browser-node-exit-code.txt || { echo "Stella browser ABI Node test was never attempted"; exit 1; }
+          test "$(cat probe-results/stella-browser-node-exit-code.txt)" = "0" || { echo "Stella browser ABI Node test failed"; exit 1; }
+          echo "Stella browser ABI executed real monocular ORB frame extraction in Node; Safari SLAM untested" >> "$GITHUB_STEP_SUMMARY"
