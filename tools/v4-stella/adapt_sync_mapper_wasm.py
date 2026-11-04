@@ -534,6 +534,22 @@ unsigned int robust::brute_force_match"""
     // check the new keyframe is needed"""
         )
     ])
+    # Diagnostic only: log real matcher stage and map acceptance per frame.
+    files["src/stella_vslam/tracking_module.cc"].append((
+        "    return succeeded;\n}\n\nbool tracking_module::relocalize_by_pose",
+        """#ifdef __EMSCRIPTEN__
+    unsigned int associated = 0;
+    for (const auto& lm : curr_frm_.get_landmarks()) {
+        if (lm && !lm->will_be_erased()) ++associated;
+    }
+    spdlog::info("PAI_STELLA_FRAME_MATCH frame={} success={} associated={}",
+                 curr_frm_.id_, succeeded ? 1 : 0, associated);
+#endif
+    return succeeded;
+}
+
+bool tracking_module::relocalize_by_pose"""
+    ))
     # Read-only per-frame internal state exported to iPhone diagnostics.
     # Values: tracker state (0 init/1 tracking/2 lost), keyframe count,
     # landmark count, observed ORB count, associated 3D landmark count.
