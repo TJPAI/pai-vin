@@ -12,11 +12,12 @@ function hash(x,y,layer) {
   a = Math.imul(a ^ (a>>>13), 1274126177);
   return (a^(a>>>16))>>>0;
 }
+const textureScale = Number(process.env.PAI_TEXTURE_SCALE || 41);
 function texture(x,y,layer) {
-  const u = Math.floor(x*41), v=Math.floor(y*41);
+  const u = Math.floor(x*textureScale), v=Math.floor(y*textureScale);
   const tile=(hash(u,v,layer)>>>24);
   const grid=(u%5===0||v%7===0)?40:0;
-  const cross=(Math.abs(x*41-u-0.5)<0.09||Math.abs(y*41-v-0.5)<0.09)?36:0;
+  const cross=(Math.abs(x*textureScale-u-0.5)<0.09||Math.abs(y*textureScale-v-0.5)<0.09)?36:0;
   return Math.min(255,25+(tile*0.68)+grid+cross)|0;
 }
 function imageAt(cameraX, cameraY) {
@@ -98,7 +99,7 @@ Mapping:
   }
   mod._free(p);mod._free(pose);mod._pai_stella_destroy();
   console.log('PAI_STELLA_GEOMETRIC_PARALLAX_MULTIFRAME_PASS', JSON.stringify({
-    preset,frames:numFrames,nativePoses,noPose,firstPose,poseSample:poses.slice(0,3),
+    preset,textureScale,frames:numFrames,nativePoses,noPose,firstPose,poseSample:poses.slice(0,3),
     caveat:'synthetic two-plane scene; no iPhone or metric accuracy verification'
   }));
   if(nativePoses===0)console.log('PAI_STELLA_PARALLAX_INIT_NOT_YET_VALIDATED');
