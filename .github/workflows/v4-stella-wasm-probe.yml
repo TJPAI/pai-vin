@@ -249,6 +249,61 @@ jobs:
           echo "$rc" > probe-results/sqlite-configure-exit-code.txt
           echo "With WASM SQLite3: stella CMake configure exit $rc (NOT full SLAM compile)" >> "$GITHUB_STEP_SUMMARY"
           tail -n 70 probe-results/stella-sqlite-configure.log
+      - name: Seventh probe - install pinned g2o WASM and check stella's full solver dependency
+        shell: bash
+        run: |
+          set -uo pipefail
+          git clone --quiet https://github.com/RainerKuemmerle/g2o.git /tmp/pai-g2o-src
+          git -C /tmp/pai-g2o-src checkout --detach fd65627348213d56866b24c0b7d054bcf105f0a5
+          test "$(git -C /tmp/pai-g2o-src rev-parse HEAD)" = fd65627348213d56866b24c0b7d054bcf105f0a5
+          set +e
+          timeout 150s emcmake cmake -S /tmp/pai-g2o-src -B /tmp/pai-g2o-wasm \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/tmp/pai-wasm-prefix \
+            -DBUILD_SHARED_LIBS=OFF -DG2O_BUILD_APPS=OFF -DG2O_BUILD_EXAMPLES=OFF \
+            -DBUILD_UNITTESTS=OFF -DG2O_BUILD_BENCHMARKS=OFF \
+            -DG2O_USE_OPENGL=OFF -DG2O_USE_OPENMP=OFF -DG2O_USE_CHOLMOD=OFF \
+            -DG2O_USE_CSPARSE=OFF -DG2O_USE_LGPL_LIBS=OFF \
+            -DG2O_USE_LOGGING=OFF -DDO_SSE_AUTODETECT=OFF \
+            -DEigen3_DIR=/usr/share/eigen3/cmake \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH \
+            > probe-results/g2o-wasm-configure.log 2>&1
+          cfg=$?
+          if [ "$cfg" -eq 0 ]; then
+            timeout 360s emmake cmake --build /tmp/pai-g2o-wasm -j2 > probe-results/g2o-wasm-build.log 2>&1
+            built=$?
+          else
+            built=98
+          fi
+          if [ "$built" -eq 0 ]; then
+            emmake cmake --install /tmp/pai-g2o-wasm >> probe-results/g2o-wasm-build.log 2>&1
+            built=$?
+          fi
+          printf '%s\n' "$cfg" > probe-results/g2o-configure-exit-code.txt
+          printf '%s\n' "$built" > probe-results/g2o-build-exit-code.txt
+          echo "g2o configure=$cfg build/install=$built (real WASM archives; CSparse disabled)" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$built" -eq 0 ]; then
+            find /tmp/pai-wasm-prefix -iname '*g2o*config*.cmake' > probe-results/g2o-config-paths.txt
+            cat probe-results/g2o-config-paths.txt
+            timeout 150s emcmake cmake -S /tmp/stella-vslam -B /tmp/stella-vslam/build-wasm-g2o \
+              -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DUSE_ARUCO=OFF -DUSE_CCACHE=OFF \
+              -DEIGEN3_INCLUDE_DIR=/usr/include/eigen3 \
+              -DCMAKE_PREFIX_PATH=/tmp/pai-wasm-prefix \
+              -Dyaml-cpp_DIR=/tmp/pai-wasm-prefix/lib/cmake/yaml-cpp \
+              -DOpenCV_DIR=/tmp/pai-wasm-prefix/lib/cmake/opencv4 \
+              -DSQLite3_INCLUDE_DIR=/tmp/pai-wasm-prefix/include \
+              -DSQLite3_LIBRARY=/tmp/pai-wasm-prefix/lib/libsqlite3.a \
+              -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH -DCMAKE_BUILD_TYPE=Release \
+              > probe-results/stella-g2o-configure.log 2>&1
+            stella_rc=$?
+            echo "$stella_rc" > probe-results/stella-g2o-configure-exit-code.txt
+            echo "stella CMake using genuine g2o exports exit=$stella_rc; csparse targets NOT faked" >> "$GITHUB_STEP_SUMMARY"
+            grep -n -m 18 -E 'CMake Error|Could NOT find|NOT_FOUND|not found|[Ee]rror' probe-results/stella-g2o-configure.log || true
+            tail -n 55 probe-results/stella-g2o-configure.log
+          else
+            grep -n -m 18 -E 'error:|fatal error:|undefined|[Ee]rror' probe-results/g2o-wasm-build.log probe-results/g2o-wasm-configure.log || true
+            tail -n 45 probe-results/g2o-wasm-build.log 2>/dev/null || true
+          fi
+          set -e
       - name: Save configure evidence (including blockers)
         uses: actions/upload-artifact@v4
         with:
