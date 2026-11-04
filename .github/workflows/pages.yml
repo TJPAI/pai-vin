@@ -98,6 +98,29 @@ jobs:
           # This release does not modify, compile or relink the upstream runtime.
           grep -q 'export { AlvaAR }' dist/vendor/alva_ar.js
           ! grep -R 'web-vio-demo\|vin-vo-path\|vin-scan' dist/
+      - name: Include only CI-validated genuine Stella browser JS/WASM
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            run_id=$(jq -r '.workflow_run.id' "$GITHUB_EVENT_PATH")
+          else
+            run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/v4-stella-wasm-probe.yml/runs?branch=main&status=success&per_page=1" --jq '.workflow_runs[0].id // empty')
+          fi
+          if [ -z "$run_id" ]; then
+            echo 'No successful Stella browser build yet: test page will show module unavailable'
+            exit 0
+          fi
+          mkdir -p dist/vendor/stella
+          if gh run download "$run_id" -R "$GITHUB_REPOSITORY" -n stella-browser-abi-js-wasm -D dist/vendor/stella; then
+            test -s dist/vendor/stella/pai_stella_browser.js
+            test -s dist/vendor/stella/pai_stella_browser.wasm
+            echo "Published genuine Stella JS/WASM artifact from validated CI run $run_id" >> "$GITHUB_STEP_SUMMARY"
+          else
+            rm -rf dist/vendor/stella
+            echo "Stella binary absent in run $run_id; not publishing placeholder" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload clean PWA
