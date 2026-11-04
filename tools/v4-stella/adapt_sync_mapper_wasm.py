@@ -259,6 +259,24 @@ void mapping_module::run() {"""),
 #endif
             return true;"""
     )]
+    # Upstream frame_tracker::robust_match_based_track instantiates
+    # robust(0.8, true), which rejects ORB keypoint orientation differences
+    # above 30 degrees BEFORE geometric verification. On abrupt phone turns
+    # this hard gate blocks real feature correspondences. Only the WASM turn
+    # recovery matcher disables this prefilter; Essential RANSAC, pose
+    # optimization and true 3D landmark thresholds remain unchanged.
+    files["src/stella_vslam/module/frame_tracker.cc"] = [(
+        """    match::robust robust_matcher(0.8, true);
+
+    // Search 2D-2D matches between the ref keyframes and the current frame""",
+        """#ifdef __EMSCRIPTEN__
+    match::robust robust_matcher(0.8, false);
+#else
+    match::robust robust_matcher(0.8, true);
+#endif
+
+    // Search 2D-2D matches between the ref keyframes and the current frame"""
+    )]
     # A pure-rotation / short-baseline turn makes the essential-matrix
     # prerequisite geometrically degenerate. For LOST-mode 2D-3D re-localization,
     # obtain actual ORB correspondences and let the existing EPnP + RANSAC,
