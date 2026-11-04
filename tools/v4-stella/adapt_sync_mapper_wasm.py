@@ -184,6 +184,16 @@ void mapping_module::run() {"""),
     unsigned int fixed_keyframe_id_threshold = map_db_->get_fixed_keyframe_id_threshold();"""
         )
     ])
+    files["src/stella_vslam/tracking_module.cc"].extend([
+        (
+            "    if (curr_frm_.pose_is_valid()) {\n        last_cam_pose_from_ref_keyfrm_ = curr_frm_.get_pose_cw() * curr_frm_.ref_keyfrm_->get_pose_wc();",
+            "    if (succeeded && curr_frm_.pose_is_valid()) {\n        last_cam_pose_from_ref_keyfrm_ = curr_frm_.get_pose_cw() * curr_frm_.ref_keyfrm_->get_pose_wc();"
+        ),
+        (
+            "        last_frm_ = curr_frm_;\n    }\n    SPDLOG_TRACE(\"tracking_module: finish tracking\");",
+            "#ifdef __EMSCRIPTEN__\n        if (succeeded && curr_frm_.pose_is_valid()) last_frm_ = curr_frm_;\n#else\n        last_frm_ = curr_frm_;\n#endif\n    }\n    SPDLOG_TRACE(\"tracking_module: finish tracking\");"
+        )
+    ])
     # Upstream relocalizer marks a successful PnP pose but has a TODO to
     # update the reference keyframe. This matters after a turn: local-map
     # tracking must use the actual recovered candidate, not a stale reference.
