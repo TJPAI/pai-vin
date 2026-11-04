@@ -184,6 +184,19 @@ void mapping_module::run() {"""),
     unsigned int fixed_keyframe_id_threshold = map_db_->get_fixed_keyframe_id_threshold();"""
         )
     ])
+    # Upstream relocalizer marks a successful PnP pose but has a TODO to
+    # update the reference keyframe. This matters after a turn: local-map
+    # tracking must use the actual recovered candidate, not a stale reference.
+    files["src/stella_vslam/module/relocalizer.cc"] = [(
+        """            // TODO: should set the reference keyframe of the current frame
+            return true;""",
+        """#ifdef __EMSCRIPTEN__
+            curr_frm.ref_keyfrm_ = candidate_keyfrm;
+#else
+            // TODO: should set the reference keyframe of the current frame
+#endif
+            return true;"""
+    )]
     changed = {}
     for name, replacements in files.items():
         path = root / name
