@@ -329,7 +329,7 @@ jobs:
               "add_executable(pai_stella_link_smoke \"$GITHUB_WORKSPACE/tools/v4-stella/stella-wasm-link-smoke.cc\")" \
               'target_link_libraries(pai_stella_link_smoke PRIVATE stella_vslam)' \
               'set_target_properties(pai_stella_link_smoke PROPERTIES SUFFIX ".js")' \
-              'target_link_options(pai_stella_link_smoke PRIVATE "-sALLOW_MEMORY_GROWTH=1" "-sENVIRONMENT=node" "-sEXIT_RUNTIME=1")' \
+              'target_link_options(pai_stella_link_smoke PRIVATE "-sALLOW_MEMORY_GROWTH=1" "-sENVIRONMENT=node" "-sEXIT_RUNTIME=0")' \
               >> /tmp/stella-vslam/CMakeLists.txt
             timeout 150s emcmake cmake -S /tmp/stella-vslam -B /tmp/stella-vslam/build-wasm-g2o \
               -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DUSE_ARUCO=OFF -DUSE_CCACHE=OFF \
