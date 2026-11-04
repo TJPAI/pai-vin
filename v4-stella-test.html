@@ -9,8 +9,8 @@ select,input{padding:8px;background:#0c1728;border:1px solid #53708a;color:white
 canvas{display:block;width:100%;background:#08131f;border-radius:8px}#preview{aspect-ratio:4/3}#trail{aspect-ratio:1}
 .small{font-size:13px;color:#aec4dc}.warn{color:#ffd18c}.good{color:#8ee3b9}code{overflow-wrap:anywhere}
 </style></head><body><main>
-<h1>PAI-VIN Stella V1.2 · 原生 WASM 试验</h1>
-<p id="build-version" class="small" style="padding:9px;background:#233650;border-radius:8px" aria-live="polite">V1.2 · 正在核对 Stella WASM 构建…</p>
+<h1>PAI-VIN Stella V1.3 · 原生 WASM 试验</h1>
+<p id="build-version" class="small" style="padding:9px;background:#233650;border-radius:8px" aria-live="polite">V1.3 · 正在核对 Stella WASM 构建…</p>
 <p class="warn">这是 Stella 原生引擎测试，不是已经完成的室内定位系统。只有引擎返回真实位姿才会绘制轨迹。当前单线程 WASM 尚未验证连续建图，0.5 米精度及持久重定位均未实现。</p>
 <section>
 <button id="start">启动 Stella 与摄像头</button><button id="stop" disabled>停止</button><button id="export" type="button">导出诊断 JSON</button>
@@ -18,6 +18,7 @@ canvas{display:block;width:100%;background:#08131f;border-radius:8px}#preview{as
 <label>处理模式 <select id="mode"><option value="track">真实位姿跟踪（试验）</option><option value="features">仅检查真实 ORB 特征</option></select></label>
 <p class="small">相机内参为近似值，尚未经 iPhone 标定。优先使用纹理丰富的墙面/家具，先侧移20–40厘米再缓慢转弯；单纯原地旋转无法建立可靠单目尺度。</p>
 <p id="status" role="status">未启动</p><p id="counts" class="small">处理帧 0 · 有效位姿 0</p>
+<p id="native-diagnostics" class="small">Stella 原生状态：等待引擎</p>
 </section>
 <section><h2>实时相机画面（可切换分辨率）</h2><video id="video" autoplay muted playsinline style="display:none"></video><canvas id="preview" width="320" height="240"></canvas></section>
 <section><h2>Stella 实时俯视轨迹（非米制）</h2><canvas id="trail" width="340" height="340"></canvas><p id="tracking" class="small">没有原生位姿；不会绘制虚构轨迹</p></section>
@@ -33,15 +34,15 @@ async function loadBuildInfo(){
     const response=await fetch('./stella-build-info.json?ts='+Date.now(),{cache:'no-store'});
     if(!response.ok)throw Error('HTTP '+response.status);
     const info=await response.json();
-    if(info.schema!=='pai-vin-stella-build-v1'||!info.appCommit||info.appVersion!=='V1.2')throw Error('Invalid/mismatched metadata');
+    if(info.schema!=='pai-vin-stella-build-v1'||!info.appCommit||info.appVersion!=='V1.3')throw Error('Invalid/mismatched metadata');
     buildInfo=info;
     const appSha=info.appCommit.slice(0,10);
     const engineSha=info.stellaSourceCommit?info.stellaSourceCommit.slice(0,10):'无';
     const engineRun=info.stellaWasmRunId?('#'+info.stellaWasmRunId):'未打包';
     const engineStatus=info.stellaWasmRunId?'已打包':'未打包';
-    label.textContent='V1.2 · 页面 '+appSha+' · Stella WASM '+engineRun+'（'+engineStatus+'；构建提交 '+engineSha+'） · 部署 '+(info.builtAt||'未知');
+    label.textContent='V1.3 · 页面 '+appSha+' · Stella WASM '+engineRun+'（'+engineStatus+'；构建提交 '+engineSha+'） · 部署 '+(info.builtAt||'未知');
   }catch(error){
-    label.textContent='V1.2 · 构建详情校验失败：'+String(error?.message||error)+'；请刷新后重试';
+    label.textContent='V1.3 · 构建详情校验失败：'+String(error?.message||error)+'；请刷新后重试';
   }
 }
 void loadBuildInfo();
@@ -114,6 +115,7 @@ $('start').onclick=async()=>{
  try{
   frames=0;valid=0;errors=0;lossFrames=0;recoveries=0;lastFrameReceived=0;observedFps=0;hadLoss=false;current=[];parts=[];lastHeading=null;lastSent=0;pending=false;sequence=0;
   diagnostics.frames=[];diagnostics.errors=[];
+  $('native-diagnostics').textContent='Stella 原生状态：等待图像';
   const rich=quality.value==='rich';
   W=rich?480:320; H=rich?360:240;
   preview.width=W;preview.height=H;
@@ -134,8 +136,15 @@ $('start').onclick=async()=>{
       observedFps=observedFps?0.85*observedFps+0.15*instantFps:instantFps;
     }
     lastFrameReceived=now;
-    record('frame',{sequence:d.sequence,mode:d.mode,nativePose:!!d.pose,featureCount:d.features??null,pose:d.pose||null,processingMs:d.processingMs??null});
+    record('frame',{sequence:d.sequence,mode:d.mode,nativePose:!!d.pose,featureCount:d.features??null,pose:d.pose||null,processingMs:d.processingMs??null,trackingState:d.trackingState??null,keyframes:d.keyframes??null,mapPoints:d.mapPoints??null,orbCount:d.orbCount??null,associatedPoints:d.associatedPoints??null});
     lastProcessMs=d.processingMs||0;
+    if(d.mode==='track'){
+      const stateNames=['初始化','跟踪中','失跟'];
+      const statusName=Number.isInteger(d.trackingState)?(stateNames[d.trackingState]||'未知'):'旧 WASM 未提供诊断';
+      $('native-diagnostics').textContent='原生状态：'+statusName
+        +' · 关键帧 '+(d.keyframes??'—')+' · 地图点 '+(d.mapPoints??'—')
+        +' · 当前ORB '+(d.orbCount??'—')+' · 关联地图点 '+(d.associatedPoints??'—');
+    }
     if(d.pose){
      const p=[d.pose[12],d.pose[14]];
      if(Number.isFinite(p[0])&&Number.isFinite(p[1])){
@@ -162,7 +171,7 @@ $('start').onclick=async()=>{
     'Feature:','  name: iPhone WASM ORB','  scale_factor: 1.2','  num_levels: 6',
     '  ini_fast_threshold: 12','  min_fast_threshold: 6',
     'Initializer:','  min_num_valid_pts: 35','  min_num_triangulated_pts: 25','  parallax_deg_threshold: 0.8','  num_ransac_iterations: 150',
-    'Tracking:','  init_retry_threshold_time: 1.0','  enable_auto_relocalization: true',
+    'Tracking:','  init_retry_threshold_time: 0.0','  enable_auto_relocalization: true',
     'Relocalizer:','  min_num_bow_matches: 15','  min_num_valid_obs: 30','  max_num_ransac_iter: 50',
     'KeyframeInserter:','  max_interval: 0.5','  min_interval: 0.12',
     'Mapping:','  enable_interruption_of_landmark_generation: false'].join('\n');
