@@ -18,6 +18,12 @@ jobs:
         uses: mymindstorm/setup-emsdk@v14
         with:
           version: '3.1.74'
+      - name: Restore pinned OpenCV WASM install prefix cache
+        id: opencv-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/pai-wasm-prefix
+          key: pai-vin-opencv481-emsdk3174-static-nointrinsics-v1
       - name: Toolchain smoke (real wasm executable)
         run: |
           set -euxo pipefail
@@ -153,6 +159,7 @@ jobs:
             echo 'Next dependency blocker follows; see artifact log.' >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Fifth probe - cross-compile minimal OpenCV 4.8.1 for WASM
+        if: steps.opencv-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -uo pipefail
@@ -213,6 +220,30 @@ jobs:
             fi
           fi
           set -e
+      - name: Verify newly built OpenCV WASM archives before caching
+        if: steps.opencv-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          test "$(cat probe-results/opencv-configure-exit-code.txt)" = "0"
+          test "$(cat probe-results/opencv-build-exit-code.txt)" = "0"
+          test -f /tmp/pai-wasm-prefix/lib/cmake/opencv4/OpenCVConfig.cmake
+          test -s /tmp/pai-wasm-prefix/lib/libopencv_core.a
+          test -s /tmp/pai-wasm-prefix/lib/libopencv_features2d.a
+          echo "OpenCV WASM real archives confirmed; safe to cache installed prefix" >> "$GITHUB_STEP_SUMMARY"
+      - name: Cache verified WASM OpenCV install prefix
+        if: steps.opencv-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/pai-wasm-prefix
+          key: pai-vin-opencv481-emsdk3174-static-nointrinsics-v1
+      - name: Verify restored WASM OpenCV cache
+        if: steps.opencv-cache.outputs.cache-hit == 'true'
+        run: |
+          set -euo pipefail
+          test -f /tmp/pai-wasm-prefix/lib/cmake/opencv4/OpenCVConfig.cmake
+          test -s /tmp/pai-wasm-prefix/lib/libopencv_core.a
+          test -s /tmp/pai-wasm-prefix/lib/libopencv_features2d.a
+          echo "Reused verified OpenCV 4.8.1 WASM libraries from Actions cache" >> "$GITHUB_STEP_SUMMARY"
       - name: Sixth probe - actual SQLite3 WASM static build and stella configure
         shell: bash
         run: |
