@@ -206,27 +206,6 @@ void mapping_module::run() {"""),
             "#ifdef __EMSCRIPTEN__\n        if (succeeded && curr_frm_.pose_is_valid()) last_frm_ = curr_frm_;\n#else\n        last_frm_ = curr_frm_;\n#endif\n    }\n    SPDLOG_TRACE(\"tracking_module: finish tracking\");"
         )
     ])
-    # During a sharp turn the motion-model/projection path can fail BEFORE
-    # Stella enters Lost. Try the real robust keyframe matcher immediately,
-    # while the last valid frame and reference still carry usable observations.
-    # A successful result must also pass the ordinary local-map tracker gate.
-    files["src/stella_vslam/tracking_module.cc"].append((
-        """        succeeded = track_current_frame();
-    }
-    else if (bow_db_ && enable_auto_relocalization_) {""",
-        """        succeeded = track_current_frame();
-#ifdef __EMSCRIPTEN__
-        if (!succeeded && last_frm_.pose_is_valid() && curr_frm_.ref_keyfrm_) {
-            twist_is_valid_ = false;
-            succeeded = frame_tracker_.robust_match_based_track(
-                curr_frm_, last_frm_, curr_frm_.ref_keyfrm_);
-            spdlog::info("PAI_STELLA_TURN_FALLBACK frame={} matched={}",
-                         curr_frm_.id_, succeeded ? 1 : 0);
-        }
-#endif
-    }
-    else if (bow_db_ && enable_auto_relocalization_) {"""
-    ))
     # Upstream relocalizer marks a successful PnP pose but has a TODO to
     # update the reference keyframe. This matters after a turn: local-map
     # tracking must use the actual recovered candidate, not a stale reference.
