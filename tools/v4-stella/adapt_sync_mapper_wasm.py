@@ -206,10 +206,10 @@ void mapping_module::run() {"""),
                          curr_frm_.id_, candidates.size(), historical.size(), succeeded ? 1 : 0);
         }
         }
-        if (succeeded) {
-            last_reloc_frm_id_ = curr_frm_.id_;
-            last_reloc_frm_timestamp_ = curr_frm_.timestamp_;
-        }
+        // Do not mark a relocalization as complete until the ordinary
+        // local-map acceptance check has also succeeded. Otherwise the
+        // post-reloc 40-landmark gate may repeatedly reject 30–39 point
+        // candidate solutions, continuously refreshing its own 1s timer.
     }
 #endif
 
@@ -227,6 +227,22 @@ void mapping_module::run() {"""),
             "#ifdef __EMSCRIPTEN__\n        if (succeeded && curr_frm_.pose_is_valid()) last_frm_ = curr_frm_;\n#else\n        last_frm_ = curr_frm_;\n#endif\n    }\n    SPDLOG_TRACE(\"tracking_module: finish tracking\");"
         )
     ])
+    # The earlier branch only runs in Lost mode. Confirm the result after
+    # all local-map checks, not immediately after robust/PnP candidate matching.
+    files["src/stella_vslam/tracking_module.cc"].append((
+        """    // update the frame statistics
+    SPDLOG_TRACE("tracking_module: update_frame_statistics (curr_frm_={})", curr_frm_.id_);""",
+        """#ifdef __EMSCRIPTEN__
+    if (relocalization_is_needed && !bow_db_ && succeeded) {
+        last_reloc_frm_id_ = curr_frm_.id_;
+        last_reloc_frm_timestamp_ = curr_frm_.timestamp_;
+        spdlog::info("PAI_STELLA_RELOC_ACCEPTED frame={} local_map=pass",
+                     curr_frm_.id_);
+    }
+#endif
+    // update the frame statistics
+    SPDLOG_TRACE("tracking_module: update_frame_statistics (curr_frm_={})", curr_frm_.id_);"""
+    ))
     # Upstream relocalizer marks a successful PnP pose but has a TODO to
     # update the reference keyframe. This matters after a turn: local-map
     # tracking must use the actual recovered candidate, not a stale reference.
