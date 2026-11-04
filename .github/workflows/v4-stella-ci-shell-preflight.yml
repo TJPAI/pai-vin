@@ -35,3 +35,11 @@ jobs:
               print(f'BASH_SYNTAX_PASS {name}')
           PY
           echo 'Stella CI shell syntax PASS; CMake, C++ and Safari execution untested.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate Stella bridge and 3D sequence JavaScript syntax
+        run: |
+          set -euo pipefail
+          node --check tools/v4-stella/stella-bridge-node-smoke.cjs
+          node --check tools/v4-stella/stella-parallax-node-smoke.cjs
+          node --check v4-stella-worker.js
+          node -e "const fs=require('fs'),vm=require('vm');const s=fs.readFileSync('v4-stella-test.html','utf8');const m=s.match(/<script>([\\s\\S]*?)<\\/script>/);if(!m)throw Error('Missing test script');new vm.Script(m[1]);"
+          echo 'Stella JavaScript preflight PASS; WASM pose still subject to runtime gate.' >> "$GITHUB_STEP_SUMMARY"
