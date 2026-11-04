@@ -110,6 +110,26 @@ void mapping_module::run() {"""),
     thread_for_F.join();
 #endif"""
     )]
+    # Instrument only the WASM clone for actionable native initialization
+    # diagnostics: match counts and geometric reconstruction outcomes.
+    files["src/stella_vslam/module/initializer.cc"] = [
+        (
+            "    if (num_matches < min_num_valid_pts_) {",
+            """#ifdef __EMSCRIPTEN__
+    spdlog::info("PAI_STELLA_INIT_MATCHES frame={} matches={} min_required={}",
+                 curr_frm.id_, num_matches, min_num_valid_pts_);
+#endif
+    if (num_matches < min_num_valid_pts_) {"""
+        ),
+        (
+            "    return initializer_->initialize(curr_frm, init_matches_);",
+            """    const bool initialized = initializer_->initialize(curr_frm, init_matches_);
+#ifdef __EMSCRIPTEN__
+    spdlog::info("PAI_STELLA_INIT_GEOMETRY frame={} result={}", curr_frm.id_, initialized ? 1 : 0);
+#endif
+    return initialized;"""
+        )
+    ]
     changed = {}
     for name, replacements in files.items():
         path = root / name
