@@ -197,6 +197,37 @@ void mapping_module::run() {"""),
 #endif
             return true;"""
     )]
+    # Read-only per-frame internal state exported to iPhone diagnostics.
+    # Values: tracker state (0 init/1 tracking/2 lost), keyframe count,
+    # landmark count, observed ORB count, associated 3D landmark count.
+    files["src/stella_vslam/system.h"] = [
+        ("    //-----------------------------------------\n    // config\n",
+         """#ifdef __EMSCRIPTEN__
+    void get_wasm_tracking_diagnostics(int* out5) const;
+#endif
+
+    //-----------------------------------------
+    // config
+""")
+    ]
+    files["src/stella_vslam/system.cc"].append((
+        "std::shared_ptr<Mat44_t> system::feed_frame(const data::frame& frm, const cv::Mat& img, const double extraction_time_elapsed_ms) {",
+        """#ifdef __EMSCRIPTEN__
+void system::get_wasm_tracking_diagnostics(int* out5) const {
+    if (!out5 || !tracker_ || !map_db_) return;
+    const auto state = tracker_->tracking_state_;
+    out5[0] = state == tracker_state_t::Tracking ? 1 : (state == tracker_state_t::Lost ? 2 : 0);
+    out5[1] = static_cast<int>(map_db_->get_num_keyframes());
+    out5[2] = static_cast<int>(map_db_->get_num_landmarks());
+    out5[3] = static_cast<int>(tracker_->curr_frm_.frm_obs_.undist_keypts_.size());
+    int associated = 0;
+    for (const auto& lm : tracker_->curr_frm_.get_landmarks()) if (lm) ++associated;
+    out5[4] = associated;
+}
+#endif
+
+std::shared_ptr<Mat44_t> system::feed_frame(const data::frame& frm, const cv::Mat& img, const double extraction_time_elapsed_ms) {"""
+    ))
     changed = {}
     for name, replacements in files.items():
         path = root / name
