@@ -322,6 +322,14 @@ jobs:
             python3 tools/v4-stella/adapt_eigen_solver_wasm.py /tmp/stella-vslam
             python3 tools/v4-stella/adapt_fbow_cpu_wasm.py /tmp/stella-vslam/3rd/FBoW
             python3 -c 'from pathlib import Path; p=Path("/tmp/stella-vslam/src/stella_vslam/CMakeLists.txt"); s=p.read_text(); marker="find_package(g2o REQUIRED"; assert s.count(marker)==1; p.write_text(s.replace(marker,"find_package(Eigen3 CONFIG REQUIRED)\n"+marker,1))'
+            # Add a genuine executable linking real stella_vslam and its transitive libraries.
+            # Constructor-only smoke: no background threads, no fabricated camera poses.
+            printf '%s\\n' \
+              "add_executable(pai_stella_link_smoke \\\"$GITHUB_WORKSPACE/tools/v4-stella/stella-wasm-link-smoke.cc\\\")" \
+              'target_link_libraries(pai_stella_link_smoke PRIVATE stella_vslam)' \
+              'set_target_properties(pai_stella_link_smoke PROPERTIES SUFFIX ".js")' \
+              'target_link_options(pai_stella_link_smoke PRIVATE "-sALLOW_MEMORY_GROWTH=1" "-sENVIRONMENT=node" "-sEXIT_RUNTIME=1")' \
+              >> /tmp/stella-vslam/CMakeLists.txt
             timeout 150s emcmake cmake -S /tmp/stella-vslam -B /tmp/stella-vslam/build-wasm-g2o \
               -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF -DUSE_ARUCO=OFF -DUSE_CCACHE=OFF \
               -DEIGEN3_INCLUDE_DIR=/usr/include/eigen3 \
@@ -371,6 +379,26 @@ jobs:
             else
               echo 'Stella C++ build SKIPPED because configure did not pass' >> "$GITHUB_STEP_SUMMARY"
             fi
+            if [ "${stella_build_rc:-99}" -eq 0 ]; then
+              timeout 240s emmake cmake --build /tmp/stella-vslam/build-wasm-g2o --target pai_stella_link_smoke -j2 > probe-results/stella-wasm-link-build.log 2>&1
+              link_rc=$?
+              echo "$link_rc" > probe-results/stella-link-exit-code.txt
+              if [ "$link_rc" -eq 0 ]; then
+                timeout 30s node /tmp/stella-vslam/build-wasm-g2o/pai_stella_link_smoke.js > probe-results/stella-wasm-node-execute.log 2>&1
+                execute_rc=$?
+                if [ "$execute_rc" -eq 0 ] && grep -q 'PAI_STELLA_REAL_SYSTEM_CONSTRUCTOR_LINK_PASS' probe-results/stella-wasm-node-execute.log; then
+                  echo "0" > probe-results/stella-node-exit-code.txt
+                  echo 'Real Stella system ctor WASM linked and executed in Node (Safari NOT tested)' >> "$GITHUB_STEP_SUMMARY"
+                else
+                  echo "${execute_rc:-96}" > probe-results/stella-node-exit-code.txt
+                  tail -n 60 probe-results/stella-wasm-node-execute.log
+                fi
+              else
+                echo "97" > probe-results/stella-node-exit-code.txt
+                grep -n -m 25 -E 'error:|undefined symbol|Error' probe-results/stella-wasm-link-build.log || true
+                tail -n 60 probe-results/stella-wasm-link-build.log
+              fi
+            fi
             grep -n -m 18 -E 'CMake Error|Could NOT find|NOT_FOUND|not found|[Ee]rror' probe-results/stella-g2o-configure.log || true
             tail -n 55 probe-results/stella-g2o-configure.log
           else
@@ -394,4 +422,8 @@ jobs:
           test -f probe-results/stella-build-exit-code.txt || { echo "Stella source build was never reached"; exit 1; }
           test "$(cat probe-results/stella-build-exit-code.txt)" = "0" || { echo "Stella source build failed"; exit 1; }
           test -s probe-results/stella-core-archives.txt || { echo "Stella static archive missing"; exit 1; }
-          echo "Stella genuine WASM C++ compilation acceptance PASS; JS/Safari SLAM runtime NOT verified" >> "$GITHUB_STEP_SUMMARY"
+          echo "Stella genuine WASM C++ compilation acceptance PASS" >> "$GITHUB_STEP_SUMMARY"
+          test -f probe-results/stella-link-exit-code.txt || { echo "JS/WASM link was not attempted"; exit 1; }
+          test "$(cat probe-results/stella-link-exit-code.txt)" = "0" || { echo "JS/WASM link failed"; exit 1; }
+          test "$(cat probe-results/stella-node-exit-code.txt)" = "0" || { echo "Node.js WASM execution did not pass"; exit 1; }
+          echo "Stella actual system constructor Node.js WASM execution PASS; Safari/SLAM frame tracking NOT verified" >> "$GITHUB_STEP_SUMMARY"
