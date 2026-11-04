@@ -129,7 +129,6 @@ jobs:
             echo "Stella binary absent in run $run_id; not publishing placeholder" >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Write deployed frontend and Stella WASM version metadata
-        env:
         run: |
           set -euo pipefail
           export APP_COMMIT="$(git rev-parse HEAD)"
