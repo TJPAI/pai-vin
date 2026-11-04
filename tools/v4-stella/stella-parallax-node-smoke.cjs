@@ -68,6 +68,17 @@ Feature:
   num_levels: 6
   ini_fast_threshold: 12
   min_fast_threshold: 6
+Initializer:
+  min_num_valid_pts: ${cfg.minMatch}
+  min_num_triangulated_pts: ${cfg.minTri}
+  parallax_deg_threshold: ${cfg.minParallax}
+  num_ransac_iterations: 150
+Tracking:
+  init_retry_threshold_time: 0.0
+  enable_auto_relocalization: true
+Relocalizer:
+  min_num_bow_matches: 15
+  min_num_valid_obs: 30
 Mapping:
   enable_interruption_of_landmark_generation: false
   enable_interruption_before_local_BA: false
