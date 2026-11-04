@@ -92,6 +92,24 @@ void mapping_module::run() {"""),
         'enable_interruption_of_landmark_generation_(yaml_node["enable_interruption_of_landmark_generation"].as<bool>(true)),',
         'enable_interruption_of_landmark_generation_(false),'
     )
+    # Stella monocular perspective initializer normally launches two std::threads
+    # for homography/fundamental RANSAC. Non-pthread Emscripten aborts on frame 2.
+    # Preserve the same algorithms and RANSAC parameters, execute sequentially.
+    files["src/stella_vslam/initialize/perspective.cc"] = [(
+        """    std::thread thread_for_H(&solve::homography_solver::find_via_ransac, &homography_solver, num_ransac_iters_, false);
+    std::thread thread_for_F(&solve::fundamental_solver::find_via_ransac, &fundamental_solver, num_ransac_iters_, false);
+    thread_for_H.join();
+    thread_for_F.join();""",
+        """#ifdef __EMSCRIPTEN__
+    homography_solver.find_via_ransac(num_ransac_iters_, false);
+    fundamental_solver.find_via_ransac(num_ransac_iters_, false);
+#else
+    std::thread thread_for_H(&solve::homography_solver::find_via_ransac, &homography_solver, num_ransac_iters_, false);
+    std::thread thread_for_F(&solve::fundamental_solver::find_via_ransac, &fundamental_solver, num_ransac_iters_, false);
+    thread_for_H.join();
+    thread_for_F.join();
+#endif"""
+    )]
     changed = {}
     for name, replacements in files.items():
         path = root / name
