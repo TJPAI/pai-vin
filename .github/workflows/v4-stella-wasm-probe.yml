@@ -350,3 +350,14 @@ jobs:
           name: stella-v4-wasm-feasibility
           path: probe-results/
           retention-days: 14
+      - name: Enforce Stella core acceptance gate
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f probe-results/stella-g2o-configure-exit-code.txt || { echo "Stella configure was never reached"; exit 1; }
+          test "$(cat probe-results/stella-g2o-configure-exit-code.txt)" = "0" || { echo "Stella configure did not pass"; exit 1; }
+          test -f probe-results/stella-build-exit-code.txt || { echo "Stella source build was never reached"; exit 1; }
+          test "$(cat probe-results/stella-build-exit-code.txt)" = "0" || { echo "Stella source build failed"; exit 1; }
+          test -s probe-results/stella-core-archives.txt || { echo "Stella static archive missing"; exit 1; }
+          echo "Stella genuine WASM C++ compilation acceptance PASS; JS/Safari SLAM runtime NOT verified" >> "$GITHUB_STEP_SUMMARY"
