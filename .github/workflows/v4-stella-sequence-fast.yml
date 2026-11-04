@@ -46,7 +46,17 @@ jobs:
             done
           done
           test "$(grep -c 'PAI_STELLA_GEOMETRIC_PARALLAX_MULTIFRAME_PASS' stella-parallax-test.log)" -eq 9
-          echo 'Real Stella WASM geometric parallax sequence completed; native pose count recorded in log' >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          line_prefix='PAI_STELLA_GEOMETRIC_PARALLAX_MULTIFRAME_PASS '
+          records=[json.loads(line.split(line_prefix,1)[1]) for line in Path('stella-parallax-test.log').read_text().splitlines() if line_prefix in line]
+          assert len(records)==9, f'Expected nine genuine 3D fixtures, found {len(records)}'
+          successful=[r for r in records if r['nativePoses']>0 and r['firstPose'] is not None]
+          assert successful, 'No genuinely computed Stella 6DoF pose in any geometrical fixture'
+          print('PAI_STELLA_GENUINE_6DOF_INIT_PASS', json.dumps(successful))
+          PY
+          echo 'Real Stella WASM 3D fixture produced at least one native 6DoF pose; iPhone accuracy NOT established' >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve exact sequence test results
         if: always()
         uses: actions/upload-artifact@v4
