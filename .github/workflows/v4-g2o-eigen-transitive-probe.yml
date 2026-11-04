@@ -38,7 +38,7 @@ jobs:
             -DG2O_USE_CSPARSE=OFF -DG2O_USE_LGPL_LIBS=OFF -DG2O_USE_LOGGING=OFF \
             -DDO_SSE_AUTODETECT=OFF -DEigen3_DIR=/usr/share/eigen3/cmake \
             -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH > evidence/g2o-configure.log 2>&1
-          emmake cmake --build /tmp/pai-g2o-build --target core stuff types_sba types_sim3 solver_dense solver_eigen -j2 > evidence/g2o-build.log 2>&1
+          emmake cmake --build /tmp/pai-g2o-build -j2 > evidence/g2o-build.log 2>&1
           emmake cmake --install /tmp/pai-g2o-build > evidence/g2o-install.log 2>&1
           test -f /tmp/pai-wasm-prefix/lib/cmake/g2o/g2oConfig.cmake
           cp /tmp/pai-wasm-prefix/lib/cmake/g2o/g2oConfig.cmake evidence/g2oConfig.cmake
