@@ -292,7 +292,7 @@ jobs:
             /tmp/pai-wasm-prefix/lib/cmake/g2o
             /tmp/pai-wasm-prefix/include/g2o
           key: pai-vin-g2o-fd656273-emsdk3174-eigen3-static-nosse-v1
-      - name: Seventh probe - reuse pinned g2o then build real Stella core
+      - name: Seventh probe - install or restore pinned g2o WASM
         shell: bash
         run: |
           set -uo pipefail
@@ -335,6 +335,36 @@ jobs:
           if [ "$built" -eq 0 ]; then
             find /tmp/pai-wasm-prefix -iname '*g2o*config*.cmake' > probe-results/g2o-config-paths.txt
             cat probe-results/g2o-config-paths.txt
+          else
+            grep -n -m 18 -E 'error:|fatal error:|undefined|[Ee]rror' probe-results/g2o-wasm-build.log probe-results/g2o-wasm-configure.log || true
+            tail -n 45 probe-results/g2o-wasm-build.log 2>/dev/null || true
+          fi
+          set -e
+      - name: Verify pinned g2o artifacts before cache publication
+        id: verify-g2o
+        if: ${{ steps.g2o-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat probe-results/g2o-configure-exit-code.txt)" = "0"
+          test "$(cat probe-results/g2o-build-exit-code.txt)" = "0"
+          test -s /tmp/pai-wasm-prefix/lib/libg2o_core.a
+          test -n "$(find /tmp/pai-wasm-prefix -iname '*g2o*config*.cmake' -print -quit)"
+          echo 'PAI_STELLA_G2O_CACHE_READY' >> "$GITHUB_STEP_SUMMARY"
+      - name: Save pinned g2o WASM archives for future Stella changes
+        if: ${{ steps.g2o-cache.outputs.cache-hit != 'true' && steps.verify-g2o.outcome == 'success' }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /tmp/pai-wasm-prefix/lib/libg2o*.a
+            /tmp/pai-wasm-prefix/lib/cmake/g2o
+            /tmp/pai-wasm-prefix/include/g2o
+          key: pai-vin-g2o-fd656273-emsdk3174-eigen3-static-nosse-v1
+      - name: Eighth probe - compile real Stella WASM core and link smoke
+        shell: bash
+        run: |
+          set -uo pipefail
+          if [ "$(cat probe-results/g2o-build-exit-code.txt)" = "0" ]; then
             # Adapt only the temporary pinned upstream clone, never checked-in PWA sources.
             python3 tools/v4-stella/adapt_eigen_solver_wasm.py /tmp/stella-vslam
             python3 tools/v4-stella/adapt_fbow_cpu_wasm.py /tmp/stella-vslam/3rd/FBoW
@@ -422,30 +452,9 @@ jobs:
             grep -n -m 18 -E 'CMake Error|Could NOT find|NOT_FOUND|not found|[Ee]rror' probe-results/stella-g2o-configure.log || true
             tail -n 55 probe-results/stella-g2o-configure.log
           else
-            grep -n -m 18 -E 'error:|fatal error:|undefined|[Ee]rror' probe-results/g2o-wasm-build.log probe-results/g2o-wasm-configure.log || true
-            tail -n 45 probe-results/g2o-wasm-build.log 2>/dev/null || true
+            echo 'Stella C++ build SKIPPED because g2o configure/build failed' >> "$GITHUB_STEP_SUMMARY"
           fi
           set -e
-      - name: Verify pinned g2o artifacts before cache publication
-        id: verify-g2o
-        if: ${{ steps.g2o-cache.outputs.cache-hit != 'true' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(cat probe-results/g2o-configure-exit-code.txt)" = "0"
-          test "$(cat probe-results/g2o-build-exit-code.txt)" = "0"
-          test -s /tmp/pai-wasm-prefix/lib/libg2o_core.a
-          test -n "$(find /tmp/pai-wasm-prefix -iname '*g2o*config*.cmake' -print -quit)"
-          echo 'PAI_STELLA_G2O_CACHE_READY' >> "$GITHUB_STEP_SUMMARY"
-      - name: Save pinned g2o WASM archives for future Stella changes
-        if: ${{ steps.g2o-cache.outputs.cache-hit != 'true' && steps.verify-g2o.outcome == 'success' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            /tmp/pai-wasm-prefix/lib/libg2o*.a
-            /tmp/pai-wasm-prefix/lib/cmake/g2o
-            /tmp/pai-wasm-prefix/include/g2o
-          key: pai-vin-g2o-fd656273-emsdk3174-eigen3-static-nosse-v1
       - name: Build and Node-verify real Stella browser RGBA/pose ABI
         shell: bash
         run: |
