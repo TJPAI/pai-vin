@@ -162,6 +162,17 @@ void mapping_module::run() {"""),
     unsigned int fixed_keyframe_id_threshold = map_db_->get_fixed_keyframe_id_threshold();""",
             """#ifdef __EMSCRIPTEN__
     else if (!bow_db_ && enable_auto_relocalization_) {
+        // First, a genuine robust match to the last confirmed tracking frame.
+        // Fall back to multi-keyframe PnP only if this fails.
+        if (last_frm_.pose_is_valid() && curr_frm_.ref_keyfrm_
+            && curr_frm_.timestamp_ - last_frm_.timestamp_ < 1.5) {
+            twist_is_valid_ = false;
+            succeeded = frame_tracker_.robust_match_based_track(
+                curr_frm_, last_frm_, curr_frm_.ref_keyfrm_);
+            spdlog::info("PAI_STELLA_TEMPORAL_RECOVER frame={} success={}",
+                         curr_frm_.id_, succeeded ? 1 : 0);
+        }
+        if (!succeeded) {
         auto candidates = map_db_->get_all_keyframes();
         std::sort(candidates.begin(), candidates.end(),
                   [](const std::shared_ptr<data::keyframe>& a,
@@ -173,6 +184,7 @@ void mapping_module::run() {"""),
         succeeded = relocalizer_.reloc_by_candidates(curr_frm_, candidates, true);
         spdlog::info("PAI_STELLA_WASM_RELOC frame={} candidates={} recovered={}",
                      curr_frm_.id_, candidates.size(), succeeded ? 1 : 0);
+        }
         if (succeeded) {
             last_reloc_frm_id_ = curr_frm_.id_;
             last_reloc_frm_timestamp_ = curr_frm_.timestamp_;
