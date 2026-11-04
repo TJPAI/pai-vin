@@ -148,7 +148,7 @@ jobs:
             "stellaSourceCommit":os.environ.get("STELLA_VALIDATED_SHA","") if wasm_available else "",
             "wasmArtifactPresent":wasm_available
           }
-          Path("dist/stella-build-info.json").write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\\n")
+          Path("dist/stella-build-info.json").write_text(json.dumps(data,ensure_ascii=False,indent=2)+chr(10))
           print(data)
           PY
           python3 -m json.tool dist/stella-build-info.json > /dev/null
