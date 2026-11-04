@@ -365,6 +365,34 @@ unsigned int robust::brute_force_match"""
                                                 : bow_matcher_.match_frame_and_keyframe(candidate_keyfrm, curr_frm, matched_landmarks);
 #endif"""
     ))
+    # Genuine upstream bug for map relocalization: after EPnP and descriptor
+    # matching have produced valid 3D associations, local-map refinement
+    # unconditionally returns false when no *additional* landmark can be
+    # projected. This rejects a valid candidate merely for lacking extra
+    # observations, especially when turning at the edge of the mapped FOV.
+    # Still execute the pose optimizer and final inlier-ratio acceptance.
+    files["src/stella_vslam/module/relocalizer.cc"].append((
+        """        if (!found_proj_candidate) {
+            return false;
+        }
+
+        // acquire more 2D-3D matches by projecting the local landmarks to the current frame""",
+        """#ifdef __EMSCRIPTEN__
+        // No additional map candidates is not itself a failed pose.
+        // Existing 2D-3D associations still undergo optimization and
+        // the unchanged final inlier-ratio gate below.
+        if (!found_proj_candidate) {
+            spdlog::info("PAI_STELLA_RELOC_NO_EXTRA_LMS iter={} remaining_existing_matches={}",
+                         i, curr_frm.get_landmarks().size());
+        }
+#else
+        if (!found_proj_candidate) {
+            return false;
+        }
+#endif
+
+        // acquire more 2D-3D matches by projecting the local landmarks to the current frame"""
+    ))
     # Read-only per-frame internal state exported to iPhone diagnostics.
     # Values: tracker state (0 init/1 tracking/2 lost), keyframe count,
     # landmark count, observed ORB count, associated 3D landmark count.
