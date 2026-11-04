@@ -30,6 +30,16 @@ bool valid_image(const uint8_t* bytes, int w, int h, double timestamp) {
 
 extern "C" {
 EMSCRIPTEN_KEEPALIVE const char* pai_stella_last_error() { return error.c_str(); }
+EMSCRIPTEN_KEEPALIVE int pai_stella_get_diagnostics(int* out5) {
+    if (!engine || !out5) return -1;
+    try {
+        engine->get_wasm_tracking_diagnostics(out5);
+        return 0;
+    } catch (const std::exception& e) {
+        set_error(e.what());
+        return -2;
+    }
+}
 EMSCRIPTEN_KEEPALIVE int pai_stella_create(const char* yaml) {
     if (engine) { set_error("already_created"); return -1; }
     if (!yaml || std::strlen(yaml) > 65536) { set_error("invalid_config"); return -2; }
