@@ -366,6 +366,7 @@ jobs:
       - name: Eighth probe - compile real Stella WASM core and link smoke
         shell: bash
         run: |
+          set +e
           set -uo pipefail
           if [ "$(cat probe-results/g2o-build-exit-code.txt)" = "0" ]; then
             # Adapt only the temporary pinned upstream clone, never checked-in PWA sources.
@@ -412,6 +413,8 @@ jobs:
               timeout 480s emmake cmake --build /tmp/stella-vslam/build-wasm-g2o --target stella_vslam -j2 \
                 > probe-results/stella-wasm-core-build.log 2>&1
               stella_build_rc=$?
+              echo "STELLA_CORE_BUILD_EXIT=$stella_build_rc"
+              tail -n 75 probe-results/stella-wasm-core-build.log || true
               echo "$stella_build_rc" > probe-results/stella-build-exit-code.txt
               if [ "$stella_build_rc" -eq 0 ]; then
                 find /tmp/stella-vslam/build-wasm-g2o -type f -name '*stella_vslam*.a' -print > probe-results/stella-core-archives.txt
@@ -510,6 +513,14 @@ jobs:
             grep -n -m 20 -E 'error:|undefined symbol|Error' probe-results/stella-browser-build.log || true
             tail -n 50 probe-results/stella-browser-build.log
           fi
+      - name: Preserve all Stella configure, build and tracking evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stella-raw-ci-evidence
+          path: probe-results/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Save genuine Stella browser ABI artifacts
         if: always()
         uses: actions/upload-artifact@v4
