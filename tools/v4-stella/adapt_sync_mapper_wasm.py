@@ -554,7 +554,7 @@ bool tracking_module::relocalize_by_pose"""
     # normal projection window, retry with a wider geometry-centered search.
     # This affects candidate discovery only. Pose optimization and the
     # original minimum inlier count remain mandatory.
-    files["src/stella_vslam/module/frame_tracker.cc"] = [(
+    files["src/stella_vslam/module/frame_tracker.cc"].append((
         """    if (num_matches < num_matches_thr_) {
         spdlog::debug("motion based tracking failed: {} matches < {}", num_matches, num_matches_thr_);
         return false;
@@ -572,7 +572,7 @@ bool tracking_module::relocalize_by_pose"""
                      curr_frm.id_, num_matches, num_matches_thr_);
         return false;
     }"""
-    )]
+    ))
     # Read-only per-frame internal state exported to iPhone diagnostics.
     # Values: tracker state (0 init/1 tracking/2 lost), keyframe count,
     # landmark count, observed ORB count, associated 3D landmark count.
