@@ -8,6 +8,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: stella-wasm-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   stella-wasm-probe:
     runs-on: ubuntu-latest
