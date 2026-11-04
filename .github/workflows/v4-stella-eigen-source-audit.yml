@@ -1,0 +1,40 @@
+name: PAI-VIN Stella Eigen solver source adaptation audit
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/v4-stella/adapt_eigen_solver_wasm.py'
+      - '.github/workflows/v4-stella-eigen-source-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-real-solver-adaptation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch exact Stella revision and verify adaptation assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/stella-cv/stella_vslam.git /tmp/pai-stella
+          git -C /tmp/pai-stella checkout --detach e445b5452535e781fdf6777ec33a06f5f8f5e416
+          test "$(git -C /tmp/pai-stella rev-parse HEAD)" = e445b5452535e781fdf6777ec33a06f5f8f5e416
+          python3 tools/v4-stella/adapt_eigen_solver_wasm.py /tmp/pai-stella --check
+          python3 tools/v4-stella/adapt_eigen_solver_wasm.py /tmp/pai-stella
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/pai-stella')
+          c=(p/'src/stella_vslam/CMakeLists.txt').read_text()
+          assert 'g2o::solver_csparse' not in c
+          assert 'g2o::csparse_extension' not in c
+          for name in ('global_bundle_adjuster.cc','graph_optimizer.cc'):
+              s=(p/'src/stella_vslam/optimize'/name).read_text()
+              assert 'LinearSolverCSparse' not in s
+              assert 'LinearSolverEigen' in s
+              assert 'linear_solver_csparse.h' not in s
+          print('SOURCE_ADAPTATION_PASS — compilation and numerical behavior NOT VERIFIED')
+          PY
+          git -C /tmp/pai-stella diff --check
+          git -C /tmp/pai-stella diff --stat
