@@ -2,7 +2,7 @@
  * Hosted separately from AlvaAR; real concurrent mapping is NOT yet validated.
  */
 'use strict';
-let mod = null, imagePtr = 0, posePtr = 0, diagPtr = 0, frameBytes = 0, width = 0, height = 0;
+let mod = null, imagePtr = 0, posePtr = 0, diagPtr = 0, frameBytes = 0, width = 0, height = 0, initialYaml = '';
 function send(type, data = {}) { self.postMessage({type, ...data}); }
 function lastError() {
   if (!mod) return 'module_unavailable';
@@ -17,6 +17,7 @@ async function init(message) {
     if (!mod.HEAPU8 || !mod._pai_stella_create) throw Error('Stella browser ABI incomplete');
     const rc = mod.ccall('pai_stella_create', 'number', ['string'], [message.yaml]);
     if (rc !== 0) throw Error('Stella init error ' + rc + ': ' + lastError());
+    initialYaml = message.yaml;
     width = message.width; height = message.height;
     frameBytes = width * height * 4;
     imagePtr = mod._malloc(frameBytes);
@@ -27,6 +28,16 @@ async function init(message) {
   } catch (error) {
     send('error', {message: String(error?.message || error)});
   }
+}
+function rebootstrap(message) {
+  if (!mod || !initialYaml) return send('error', {message:'rebootstrap_engine_unavailable'});
+  try {
+    mod._pai_stella_destroy();
+    const rc=mod.ccall('pai_stella_create','number',['string'],[initialYaml]);
+    if(rc!==0) throw Error('Stella rebootstrap error '+rc+': '+lastError());
+    send('rebootstrapped',{epoch:message.epoch,
+      message:'旧地图重定位持续失败；已启动新的独立单目地图。缓慢侧移 20–40 厘米以提供视差；纯旋转不能保证产生位姿。'});
+  }catch(e){ send('error',{message:'重新建图失败：'+String(e?.message||e)}); }
 }
 function frame(message) {
   if (!mod || !imagePtr) return send('error', {message:'engine_not_ready'});
@@ -64,6 +75,7 @@ function frame(message) {
 self.onmessage = async e => {
   if (e.data?.type === 'init') return init(e.data);
   if (e.data?.type === 'frame') return frame(e.data);
+  if (e.data?.type === 'rebootstrap') return rebootstrap(e.data);
   if (e.data?.type === 'destroy') {
     try {
       if (mod) {
