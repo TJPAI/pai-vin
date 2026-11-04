@@ -21,8 +21,8 @@ async function init(message) {
     frameBytes = width * height * 4;
     imagePtr = mod._malloc(frameBytes);
     posePtr = mod._malloc(16 * 8);
-    diagPtr = mod._malloc(5 * 4);
-    if (!imagePtr || !posePtr || !diagPtr || typeof mod._pai_stella_get_diagnostics !== 'function') throw Error('Stella V1.3 diagnostics ABI missing or allocation failed');
+    diagPtr = typeof mod._pai_stella_get_diagnostics === 'function' ? mod._malloc(5 * 4) : 0;
+    if (!imagePtr || !posePtr || (typeof mod._pai_stella_get_diagnostics === 'function' && !diagPtr)) throw Error('WASM frame buffer allocation failed');
     send('ready', {message: '真实 Stella 引擎已装载。尚未确认实时定位。'});
   } catch (error) {
     send('error', {message: String(error?.message || error)});
@@ -51,7 +51,7 @@ function frame(message) {
       pose = Array.from(new Float64Array(mod.HEAPU8.buffer, posePtr, 16));
       if (!pose.every(Number.isFinite)) throw Error('native pose contains non-finite values');
     }
-    const diagResult=mod._pai_stella_get_diagnostics(diagPtr);
+    const diagResult=diagPtr ? mod._pai_stella_get_diagnostics(diagPtr) : -1;
     const diag=diagResult===0?Array.from(new Int32Array(mod.HEAPU8.buffer,diagPtr,5)):null;
     send('frame', {sequence:message.sequence, pose, features:null, mode:'track',
       trackingState:diag?.[0]??null,keyframes:diag?.[1]??null,
