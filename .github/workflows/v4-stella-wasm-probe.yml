@@ -330,9 +330,19 @@ jobs:
               -DOpenCV_DIR=/tmp/pai-wasm-prefix/lib/cmake/opencv4 \
               -DSQLite3_INCLUDE_DIR=/tmp/pai-wasm-prefix/include \
               -DSQLite3_LIBRARY=/tmp/pai-wasm-prefix/lib/libsqlite3.a \
+              -DUSE_AVX=OFF -DUSE_MMX=OFF -DUSE_SSE=OFF -DUSE_SSE2=OFF -DUSE_SSE3=OFF -DUSE_SSE4=OFF \
               -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH -DCMAKE_BUILD_TYPE=Release \
               > probe-results/stella-g2o-configure.log 2>&1
             stella_rc=$?
+            if [ "$stella_rc" -eq 0 ]; then
+              if grep -E '^CMAKE_CXX_FLAGS(:|_)|^USE_(AVX|MMX|SSE|SSE2|SSE3|SSE4):' /tmp/stella-vslam/build-wasm-g2o/CMakeCache.txt > probe-results/fbow-simd-cmake-cache.txt; then
+                cat probe-results/fbow-simd-cmake-cache.txt
+              fi
+              if grep -Eq '(^|[[:space:]])-m(mmx|avx|sse|sse2|sse3|sse4\.1)([[:space:]]|$)' /tmp/stella-vslam/build-wasm-g2o/3rd/FBoW/CMakeFiles/fbow.dir/flags.make; then
+                echo 'ERROR: x86 SIMD flags remain in FBoW WASM compile flags' >> "$GITHUB_STEP_SUMMARY"
+                stella_rc=91
+              fi
+            fi
             echo "$stella_rc" > probe-results/stella-g2o-configure-exit-code.txt
             echo "stella CMake using genuine g2o exports exit=$stella_rc; csparse targets NOT faked" >> "$GITHUB_STEP_SUMMARY"
             if [ "$stella_rc" -eq 0 ]; then
